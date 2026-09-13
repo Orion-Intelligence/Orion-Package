@@ -21,11 +21,11 @@ class MenuBack(Exception):
     pass
 
 
-def command(*args, privileged=False, capture=True, input_data=None):
+def command(*args, privileged=False, capture=True, input_data=None, timeout=30):
     prefix = ['sudo', '--'] if privileged and os.geteuid() else []
     try:
         result = subprocess.run([*prefix, *map(str, args)], capture_output=capture, text=True, input=input_data,
-                                timeout=30 if capture else None)
+                                timeout=timeout if capture else None)
     except subprocess.TimeoutExpired:
         raise ValueError(f'{args[0]} timed out; fix the prerequisite and retry') from None
     if result.returncode:
@@ -216,6 +216,7 @@ def tls_menu(path):
     if cloudflare_setup.active():
         cloudflare_setup.ensure(path)
         return
+    failure = ''
     while True:
         document = Environment(path)
         try:
@@ -224,8 +225,10 @@ def tls_menu(path):
             print(error)
             ask(f'Correct domain/certificate settings in {path}, then press Enter')
             continue
-        print(f'Manual TLS: {directory}/live/{name}; required names: {", ".join(hosts)}')
-        choice = ask('1) Verify and continue  2) Change domains')
+        title = f'TLS: {directory}/live/{name}'
+        if failure:
+            title += '\nLast check failed: ' + failure
+        choice = choose(title, ['Verify and continue', 'Change domains'])
         try:
             if choice == '2':
                 try:
@@ -233,14 +236,17 @@ def tls_menu(path):
                 except MenuBack:
                     pass
                 continue
+            print('Checking DNS...', flush=True)
             for host in hosts:
-                socket.getaddrinfo(host.replace('*.', 'setup-check.'), 443, type=socket.SOCK_STREAM)
+                command('getent', 'ahosts', host.replace('*.', 'setup-check.'), timeout=10)
+            print('Checking certificate...', flush=True)
             check_certificate(document)
+            print('TLS verified.', flush=True)
             return
         except MenuBack:
             continue
         except (OSError, ValueError) as error:
-            print(error)
+            failure = str(error)
 
 def required_values(path):
     document = Environment(path)
