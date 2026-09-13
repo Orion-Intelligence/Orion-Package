@@ -10,10 +10,10 @@ cd Orion-Package
 
 Use `./push.sh` to build and publish, or `./pull.sh` to deploy published images. Both check host dependencies and offer installation when supported. Use `./setup.sh` to revisit setup.
 
-- **Push:** clones missing sources into `clone/<repository>/` inside this package, updates `trusted-main`, builds, and pushes to `msmannan00/<image>:latest`. Dirty/diverged checkouts stop the build. GitHub PAT: **Contents: Read** on all selected repositories, entered once and reused for this push (temporary credentials removed on normal exit/cancellation); Docker Hub PAT: **Read & Write**.
-- **Pull:** select modules, enter project name/VPS IP, and follow setup prompts. Docker Hub PAT: **Read**. Project/IP settings are saved for reuse or editing.
+- **Push:** clones missing sources into `clone/<repository>/` inside this package, updates `trusted-main`, builds, and pushes to `msmannan00/<image>:latest`. Dirty/diverged checkouts stop the build. GitHub PAT: **Contents: Read** on all selected repositories, entered once and held in memory for this push only; Docker Hub PAT: **Read & Write**.
+- **Pull:** select modules, enter project name/VPS IP, and follow setup prompts. Docker Hub PAT: **Read**, requested each run. Only project/IP prompt settings are remembered; PATs are never saved.
 - **Configuration:** `pull/<repo>/env` supplies defaults; pull creates `.env`, generates supported secrets, and preserves existing values. Fill remaining `{value}` entries manually. Never commit secrets or replace existing database/encryption credentials.
-- **Cloudflare:** supply a token scoped to `orionintelligence.org` with **DNS: Edit**, **Zone: Read**, and **Zone Settings: Read** (Edit to change SSL mode). Find the **Zone ID** under the domain’s **Overview → API**. Setup handles DNS and Let’s Encrypt renewal with approval; mail PTR/TCP 25 still require VPS-provider configuration.
+- **Cloudflare:** supply a token scoped to `orionintelligence.org` with **DNS: Edit**, **Zone: Read**, and **Zone Settings: Read** (Edit to change SSL mode). Find the **Zone ID** under the domain’s **Overview → API**. Select project-menu **option 3** explicitly to enable DNS/certificate setup for this run; ordinary pull never enables it automatically. The token and Zone ID are not saved. Rerun option 3 before certificates expire; unattended DNS renewal is not configured. Mail PTR/TCP 25 require VPS-provider configuration.
 
 **Controls:** arrows to navigate, Space to select, Enter to confirm, q/Esc to cancel. Any failure stops the remaining modules; fix it and rerun.
 

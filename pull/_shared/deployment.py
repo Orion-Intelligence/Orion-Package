@@ -12,6 +12,8 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from environment import ROOT, ask, update
 from env_filler import MODULES
+sys.path.insert(0, str(ROOT.parent / '_shared'))
+from session import request
 
 STATE = ROOT / '.runtime/deployment.json'
 
@@ -71,25 +73,33 @@ def values(module, data):
 
 
 
-def configure_docker():
+def configure_docker(action='pull'):
     if not sys.stdin.isatty():
-        raise ValueError('Run pull.sh in a terminal to configure Docker Hub login')
+        raise ValueError('Run push.sh or pull.sh in a terminal to configure Docker Hub login')
+    if not os.environ.get('ORION_SESSION_SOCKET'):
+        raise ValueError('A private in-memory credential session is required')
     default = os.environ.get('ORION_IMAGE_NAMESPACE', 'msmannan00')
-    print('Use a Docker Hub PAT with Read permission and an account with access to the image repositories.')
-    print('Docker saves this login for the current OS user using its credential store/config; it is not saved in application .env files.')
-    username = ask(f'Docker Hub username (Enter for {default})') or default
-    if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', username):
-        raise ValueError('Invalid Docker Hub username')
-    token = getpass.getpass('Docker Hub PAT (hidden): ').strip()
-    if not token or any(character.isspace() for character in token):
-        raise ValueError('Docker Hub PAT must be nonempty and contain no whitespace')
-    result = subprocess.run(
-        ['docker', 'login', '--username', username, '--password-stdin', 'docker.io'],
-        input=token + '\n', text=True, capture_output=True,
-    )
-    if result.returncode:
-        raise ValueError('Docker Hub login failed. Check the username, PAT validity, and registry connectivity; pulling was not started.')
-    print('Docker Hub login saved. Private images also require repository access; missing images must be built and pushed first.')
+    permission = 'Read & Write' if action == 'push' else 'Read'
+    print(f'Docker Hub PAT: {permission} access. Credentials are held in memory for this run only.')
+    while True:
+        username = ask(f'Docker Hub username (Enter for {default})') or default
+        if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', username):
+            print('Invalid Docker Hub username')
+            continue
+        token = getpass.getpass('Docker Hub PAT (hidden): ').strip()
+        if not token or any(character.isspace() for character in token):
+            print('Enter a nonempty PAT without whitespace, or Ctrl+C to cancel.')
+            continue
+        result = subprocess.run(
+            ['docker', 'login', '--username', username, '--password-stdin', 'docker.io'],
+            input=token + '\n', text=True, capture_output=True,
+        )
+        if result.returncode:
+            print('Docker Hub login failed. Check the PAT/account/network and retry, or Ctrl+C to cancel.')
+            continue
+        request('set', 'docker_ready', True)
+        print('Docker Hub login ready for this run; no PAT saved.')
+        return
 
 
 def menu():
@@ -101,10 +111,9 @@ def menu():
             print(f"Project: {data['project_name']} | VPS IP: {data['server_ip']}")
             print('Application: https://' + data['project_name'] + '.orionintelligence.org')
             print('Mail: https://' + data['project_name'] + 'mail.orionintelligence.org')
-            choice = ask('1) Pull using these settings  2) Edit project/IP  3) Configure/change Cloudflare token  4) Configure/change Docker Hub PAT')
+            choice = ask('1) Pull using these settings  2) Edit project/IP  3) Configure Cloudflare for this run  4) Configure/change Docker Hub PAT')
             if choice == '1':
-                login = ask('1) Use saved Docker login / public access  2) Configure Docker Hub PAT')
-                if login == '2':
+                if not request('get', 'docker_ready'):
                     configure_docker()
                 return
             if choice == '4':
@@ -128,8 +137,11 @@ def menu():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', choices=MODULES)
+    parser.add_argument('--docker-login', choices=('push', 'pull'))
     args = parser.parse_args()
-    if args.apply:
+    if args.docker_login:
+        configure_docker(args.docker_login)
+    elif args.apply:
         data = load()
         from runtime_env import prepare
         prepare(ROOT)

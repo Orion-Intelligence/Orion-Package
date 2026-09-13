@@ -92,24 +92,25 @@ main() {
     if (($#)); then printf 'Usage: %s (interactive)\n' "$0" >&2; return 1; fi
     choose_repositories || return $?
     bash "$PACKAGE_DIR/setup.sh" --system "$ACTION" || return $?
-    if [[ "$ACTION" == pull ]]; then python3 -B "$PACKAGE_DIR/pull/_shared/deployment.py" || return $?; fi
-    local index repository logged_in=0 status
+    local index
+    local -a modules=()
     for index in "${!REPOSITORIES[@]}"; do
-        ((SELECTED[index])) || continue
-        repository="${REPOSITORIES[index]}"
+        if ((SELECTED[index])); then modules+=("${REPOSITORIES[index]}"); fi
+    done
+    python3 -B "$PACKAGE_DIR/_shared/session.py" "$ACTION" "${modules[@]}"
+}
+
+run_selected() {
+    if [[ "$ACTION" == pull ]]; then python3 -B "$PACKAGE_DIR/pull/_shared/deployment.py" || return $?; fi
+    local repository logged_in=0 status
+    for repository in "$@"; do
         printf '\n%s: %s\n' "$ACTION" "$repository"
         if [[ ! -f "$PACKAGE_DIR/push/$repository/repo.sh" ]]; then
             pending "$repository"
             return 1
         fi
         if [[ "$ACTION" == push && "$logged_in" == 0 ]]; then
-            printf 'Docker Hub login: enter a token with Read & Write access.\n'
-            docker login --username "$ORION_IMAGE_NAMESPACE" || return $?
-            ORION_GITHUB_AUTH_DIR="$(mktemp -d /tmp/orion-github-auth.XXXXXXXXXX)" || return $?
-            export ORION_GITHUB_AUTH_DIR
-            trap 'rm -f -- "$ORION_GITHUB_AUTH_DIR/token"; rmdir -- "$ORION_GITHUB_AUTH_DIR"' EXIT
-            trap 'exit 130' INT
-            trap 'exit 143' TERM
+            python3 -B "$PACKAGE_DIR/pull/_shared/deployment.py" --docker-login push || return $?
             logged_in=1
         fi
         if dispatch "$repository"; then

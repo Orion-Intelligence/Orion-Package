@@ -5,12 +5,10 @@ import json
 import os
 from pathlib import Path
 import re
-import secrets
 import shutil
 import socket
 import ssl
 import sys
-import tempfile
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -18,31 +16,13 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import environment as env
 
-DIRECTORY = env.ROOT / '.runtime/cloudflare'
-CONFIG = DIRECTORY / 'config.json'
-CREDENTIALS = DIRECTORY / 'token.ini'
-HOOK = Path('/etc/letsencrypt/renewal-hooks/deploy/orion-package.sh')
+sys.path.insert(0, str(env.ROOT.parent / '_shared'))
+from session import request as session_request
 
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
-
-
-def secure_write(path, text):
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if path.is_symlink():
-        raise ValueError(f'Refusing symlink: {path}')
-    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.cloudflare-')
-    try:
-        with os.fdopen(fd, 'w') as output:
-            output.write(text)
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
 
 
 class Cloudflare:
@@ -145,32 +125,36 @@ class Cloudflare:
             raise ValueError('Cloudflare DNS verification failed after applying changes')
 
 
+def active():
+    return bool(os.environ.get('ORION_SESSION_SOCKET') and session_request('get', 'cloudflare'))
+
+
 def load():
-    for path in (CONFIG, CREDENTIALS):
-        if path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o077:
-            raise ValueError(f'{path}: a regular mode-600 file is required; rerun Cloudflare setup')
-    config = json.loads(CONFIG.read_text())
-    token = CREDENTIALS.read_text().removeprefix('dns_cloudflare_api_token = ').strip()
-    return config, Cloudflare(config['zone_id'], token, config['owner'])
+    config = session_request('get', 'cloudflare')
+    if not config:
+        raise ValueError('Select option 3 in the pull project menu to configure Cloudflare for this run')
+    return config, Cloudflare(config['zone_id'], config['token'], config['owner'])
 
 
 def configure():
-    print('Zone ID: Cloudflare → orionintelligence.org → Overview → API (near bottom) → Zone ID.')
-    print('Create a user API token: My Profile → API Tokens → Create Custom Token. Scope to this zone only: DNS Edit, Zone Read, Zone Settings Read; add Zone Settings Edit only to automate Full (strict).')
+    print('Zone ID: Cloudflare → orionintelligence.org → Overview → API → Zone ID.')
+    print('Token permissions: DNS Edit, Zone Read, Zone Settings Read; Settings Edit only to change SSL mode.')
+    print('Cloudflare credentials are kept in memory only. Certificate renewal requires a new interactive run before expiry.')
     zone = env.ask('Cloudflare Zone ID')
     token = getpass.getpass('Cloudflare API token (hidden): ').strip()
     email = env.ask('Let’s Encrypt account email')
     if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
         raise ValueError('A valid account email is required')
-    owner = json.loads(CONFIG.read_text())['owner'] if CONFIG.exists() and not CONFIG.is_symlink() else 'orion-package:' + secrets.token_hex(16)
+    from deployment import load as deployment_settings
+    project = deployment_settings()['project_name']
+    owner = 'orion-package:' + hashlib.sha256(project.encode()).hexdigest()[:32]
     client = Cloudflare(zone, token, owner)
     client.verify()
     client.request('GET', client.base + '/settings/ssl')
-    if env.ask('Save this token locally with mode 600 for DNS automation and certificate renewal? [y/N]').lower() != 'y':
+    if env.ask('Enable Cloudflare DNS/certificate setup for this run only? [y/N]').lower() != 'y':
         raise ValueError('Cloudflare setup cancelled')
-    secure_write(CREDENTIALS, 'dns_cloudflare_api_token = ' + token + '\n')
-    secure_write(CONFIG, json.dumps({'zone_id': zone, 'email': email, 'owner': owner}, indent=2) + '\n')
-    print('Cloudflare credentials saved outside module .env files. Never commit or copy them into images.')
+    session_request('set', 'cloudflare', {'zone_id': zone, 'email': email, 'owner': owner, 'token': token})
+    print('Cloudflare enabled for this run only; no token or Zone ID saved.')
 
 
 def address(document, name, proxied):
@@ -197,67 +181,43 @@ def desired_records(document):
             {'type': 'TXT', 'name': '_dmarc.' + mail, 'content': 'v=DMARC1; p=none', 'ttl': 1}]
 
 
-def root_install(source, target, mode):
-    env.command('install', '-d', '-m', '0755', target.parent, privileged=True)
-    env.command('install', '-o', 'root', '-g', 'root', '-m', mode, source, target, privileged=True)
-
-
 def certificates(document, config):
     directory, name, hosts = env.certificate_spec(document)
     if directory != Path('/etc/letsencrypt'):
-        raise ValueError('Automatic renewal requires /etc/letsencrypt; use manual setup for custom mounts')
-    marker = DIRECTORY / (name + '.renewal-ready')
-    root_credentials = Path('/etc/letsencrypt/orion-package') / (config['zone_id'] + '.ini')
-    hook_source = Path(__file__).with_name('renew_orion.sh')
-    fingerprint = hashlib.sha256(CREDENTIALS.read_bytes() + hook_source.read_bytes()).hexdigest()
-    ready = marker.is_file() and marker.read_text().strip() == fingerprint
-    if not ready:
-        print('Required certificate names: ' + ', '.join(hosts))
-        print('Certificate setup may install Certbot, save a root-owned renewal token, contact Let’s Encrypt/DNS, install the Orion reload hook, and enable certbot.timer. Existing certificate SANs are preserved.')
-        if env.ask('Configure automatic issuance/renewal and accept the Let’s Encrypt terms? [y/N]').lower() != 'y':
-            raise ValueError('Certificate automation declined')
+        raise ValueError('Session-only issuance uses /etc/letsencrypt; provision custom certificate mounts manually')
+    try:
+        env.check_certificate(document)
+        env.command('openssl', 'x509', '-in', directory / 'live' / name / 'fullchain.pem',
+                    '-noout', '-checkend', str(30 * 86400), privileged=True)
+        print('Existing certificate is valid for more than 30 days; reusing it.')
+        return
+    except ValueError:
+        pass
+    print('Certificate issuance uses the API token in memory only. No unattended renewal will be configured for this certificate.')
+    if env.ask('Issue/renew now and accept Let’s Encrypt terms? [y/N]').lower() != 'y':
+        raise ValueError('Certificate issuance declined')
     if not shutil.which('certbot'):
         if not shutil.which('apt-get'):
-            raise ValueError('Install Certbot with dns-cloudflare manually on this OS')
+            raise ValueError('Install Certbot and its dns-cloudflare plugin manually')
         env.command('apt-get', 'update', privileged=True, capture=False)
         env.command('apt-get', 'install', '-y', 'certbot', 'python3-certbot-dns-cloudflare', privileged=True, capture=False)
     if 'dns-cloudflare' not in env.command('certbot', 'plugins', privileged=True):
-        if Path(shutil.which('certbot') or '').resolve() not in (Path('/usr/bin/certbot'), Path('/bin/certbot')):
-            raise ValueError('Install dns-cloudflare in your existing Certbot installation, then retry')
-        env.command('apt-get', 'install', '-y', 'python3-certbot-dns-cloudflare', privileged=True, capture=False)
-        if 'dns-cloudflare' not in env.command('certbot', 'plugins', privileged=True):
-            raise ValueError('Certbot Cloudflare plugin is still unavailable')
-    root_install(CREDENTIALS, root_credentials, '0600')
-    root_install(hook_source, HOOK, '0755')
+        raise ValueError('Install the dns-cloudflare plugin in your Certbot installation, then retry')
     try:
-        env.check_certificate(document)
-        valid = True
+        previous = env.command('openssl', 'x509', '-in', directory / 'live' / name / 'fullchain.pem',
+                               '-noout', '-ext', 'subjectAltName', privileged=True)
     except ValueError:
-        valid = False
-    options = ['--dns-cloudflare', '--dns-cloudflare-credentials', str(root_credentials),
-               '--dns-cloudflare-propagation-seconds', '60', '--deploy-hook', str(HOOK)]
-    if not valid:
-        existing = directory / 'live' / name / 'fullchain.pem'
-        try:
-            previous = env.command('openssl', 'x509', '-in', existing, '-noout', '-ext', 'subjectAltName', privileged=True)
-        except ValueError:
-            previous = ''
-        hosts = tuple(sorted(set(hosts) | set(re.findall(r'DNS:([a-zA-Z0-9*.-]+)', previous))))
-        if any(not host.removeprefix('*.').endswith('.orionintelligence.org') and host.removeprefix('*.') != 'orionintelligence.org' for host in hosts):
-            raise ValueError('Existing certificate has names outside this zone; configure its renewal manually')
-        env.command('certbot', 'certonly', *options, '--cert-name', name, '--email', config['email'],
-                    '--agree-tos', '--non-interactive', '--expand',
-                    *[part for host in hosts for part in ('-d', host)], privileged=True, capture=False)
-    renewal = env.command('cat', directory / 'renewal' / (name + '.conf'), privileged=True)
-    if 'authenticator = dns-cloudflare' not in renewal or str(root_credentials) not in renewal or str(HOOK) not in renewal:
-        env.command('certbot', 'reconfigure', '--cert-name', name, *options, '--non-interactive', privileged=True, capture=False)
-        ready = False
-    if not ready:
-        env.command('certbot', 'renew', '--cert-name', name, '--dry-run', privileged=True, capture=False)
+        previous = ''
+    hosts = tuple(sorted(set(hosts) | set(re.findall(r'DNS:([a-zA-Z0-9*.-]+)', previous))))
+    if any(not host.removeprefix('*.').endswith('.orionintelligence.org') and host.removeprefix('*.') != 'orionintelligence.org' for host in hosts):
+        raise ValueError('Existing certificate includes names outside this zone; review manually')
+    args = ['--cert-name', name, '--email', config['email'], '--agree-tos', '--non-interactive', '--expand',
+            *[part for host in hosts for part in ('-d', host)]]
+    env.command('python3', Path(__file__).with_name('certbot_session.py'), privileged=True, capture=False,
+                input_data=json.dumps({'token': config['token'], 'args': args}))
     env.check_certificate(document)
-    env.command('systemctl', 'enable', '--now', 'certbot.timer', privileged=True)
-    env.command('systemctl', 'is-active', '--quiet', 'certbot.timer')
-    secure_write(marker, fingerprint + '\n')
+    env.command('bash', Path(__file__).with_name('renew_orion.sh'), privileged=True, capture=False)
+    print('Certificate ready. Rerun pull and select option 3 before expiry to renew; no saved DNS token or automatic renewal.')
 
 
 def ensure(path):
@@ -294,7 +254,7 @@ def ensure(path):
             except (OSError, ValueError):
                 print(f'{hostname}: DNS or Cloudflare edge TLS is not ready yet. Check propagation/Universal SSL activation.')
                 env.ask('Press Enter to recheck, or q to stop')
-    print('Cloudflare DNS and certificate automation ready. Provider firewall/SMTP port access still requires verification.')
+    print('Cloudflare DNS and certificates ready for this deployment. Provider firewall/SMTP port access still requires verification.')
     if path.parent.name == 'Orion-mail':
         print('Set provider PTR for ' + env.get(document, 'SERVER_IP') + ' to ' + env.get(document, 'SMTP_HOSTNAME'))
         if env.ask('Confirm provider PTR and inbound/outbound TCP 25 access are configured [y/N]').lower() != 'y':

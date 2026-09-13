@@ -203,58 +203,11 @@ def check_certificate(document):
         raise ValueError('Certificate and private key do not match')
 
 
-def issue_certificate(document):
-    directory, name, hosts = certificate_spec(document)
-    if directory != Path('/etc/letsencrypt'):
-        raise ValueError('Automatic issuance uses /etc/letsencrypt; provision custom mounts manually')
-    if not shutil.which('certbot'):
-        if ask('Install certbot and python3-certbot-dns-cloudflare using apt? [y/N]').lower() != 'y':
-            return
-        if not shutil.which('apt-get'):
-            raise ValueError('Install Certbot and its Cloudflare DNS plugin manually on this OS')
-        command('apt-get', 'update', privileged=True, capture=False)
-        command('apt-get', 'install', '-y', 'certbot', 'python3-certbot-dns-cloudflare', privileged=True, capture=False)
-    plugins = command('certbot', 'plugins', privileged=True)
-    if 'dns-cloudflare' not in plugins:
-        raise ValueError('Install the dns-cloudflare plugin in your existing Certbot installation, then retry')
-    print('Create a mode-600 credentials file containing dns_cloudflare_api_token = YOUR_TOKEN, with Zone:DNS:Edit for the required zones.')
-    credentials = Path(ask('Absolute Cloudflare credentials file path'))
-    if not credentials.is_absolute():
-        raise ValueError('Credentials file must use an absolute path')
-    mode = command('stat', '-Lc', '%a', credentials, privileged=True).strip()
-    if mode not in {'600', '400'}:
-        raise ValueError('Restrict the Cloudflare credentials file to mode 600 or 400')
-    email = ask('Let’s Encrypt account email')
-    if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
-        raise ValueError('A valid account email is required')
-    existing = directory / 'live' / name / 'fullchain.pem'
-    try:
-        previous = command('openssl', 'x509', '-in', existing, '-noout', '-ext', 'subjectAltName', privileged=True)
-    except ValueError:
-        previous = ''
-    hosts = tuple(sorted(set(hosts) | set(re.findall(r'DNS:([a-zA-Z0-9*.-]+)', previous))))
-    print('Certificate names (including existing SANs): ' + ', '.join(hosts))
-    print('This contacts Let’s Encrypt/Cloudflare, writes DNS challenges, and accepts the Let’s Encrypt terms.')
-    if ask('Proceed with certificate issuance? [y/N]').lower() != 'y':
-        return
-    command('certbot', 'certonly', '--dns-cloudflare', '--dns-cloudflare-credentials', credentials,
-            '--dns-cloudflare-propagation-seconds', '60', '--cert-name', name,
-            '--email', email, '--agree-tos', '--non-interactive', '--expand',
-            *[part for host in hosts for part in ('-d', host)], privileged=True, capture=False)
-    print('Enable certbot.timer or configure an equivalent renewal job; services reload certificates every 12 hours.')
-
-
 def tls_menu(path):
     if path.parent.name not in PUBLIC:
         return
     import cloudflare_setup
-    if not cloudflare_setup.CONFIG.exists():
-        choice = ask('1) Automate Cloudflare DNS/certificates with an API token  2) Use manually managed DNS/certificates')
-        if choice == '1':
-            cloudflare_setup.configure()
-        elif choice != '2':
-            raise ValueError('Choose automated or manual certificate setup')
-    if cloudflare_setup.CONFIG.exists():
+    if cloudflare_setup.active():
         cloudflare_setup.ensure(path)
         return
     confirmed_dns = False
@@ -278,7 +231,7 @@ def tls_menu(path):
         print('Cloudflare: use Full (strict). Point public A/AAAA records at this server; Tor2Web also needs *.onion.<basehost>.')
         if path.parent.name == 'Orion-mail':
             print('Mail SMTP/MX host must be DNS-only (not orange-cloud proxied). Configure MX, SPF, DKIM, DMARC and provider PTR; allow inbound TCP 25.')
-        choice = ask('1) Check DNS and confirm origin  2) Install/issue Cloudflare certificate  3) Check certificate and continue  4) Set/change certificate location  5) Verify renewal  6) Change domains')
+        choice = ask('1) Check DNS and confirm origin  2) Cloudflare setup instructions  3) Check certificate and continue  4) Set/change certificate location  5) Verify renewal  6) Change domains')
         try:
             if choice == '1':
                 for host in hosts:
@@ -286,7 +239,7 @@ def tls_menu(path):
                     socket.getaddrinfo(lookup, 443, type=socket.SOCK_STREAM)
                 confirmed_dns = ask('DNS resolves. Confirm DNS targets, Cloudflare TLS mode, and server/provider firewall rules are correct [y/N]').lower() == 'y'
             elif choice == '2':
-                issue_certificate(document)
+                print('Cloudflare is opt-in: cancel and select option 3 in the pull project menu. Otherwise provision certificates manually.')
             elif choice == '3':
                 check_certificate(document)
                 if not confirmed_dns or not confirmed_renewal:
@@ -303,16 +256,7 @@ def tls_menu(path):
             elif choice == '6':
                 domain_menu(path)
             elif choice == '5':
-                print('Renewal dry-run contacts the ACME staging service and your DNS provider.')
-                if ask('Run certbot renew --dry-run and enable certbot.timer? [y/N]').lower() == 'y':
-                    command('certbot', 'renew', '--cert-name', name, '--config-dir', directory, '--dry-run', privileged=True, capture=False)
-                    if directory != Path('/etc/letsencrypt'):
-                        raise ValueError('Custom certificate directories require a matching external renewal schedule; confirm that separately')
-                    command('systemctl', 'enable', '--now', 'certbot.timer', privileged=True)
-                    command('systemctl', 'is-active', '--quiet', 'certbot.timer')
-                    confirmed_renewal = True
-                else:
-                    confirmed_renewal = ask('Have you independently tested and scheduled renewal for THIS certificate (external renewal)? [y/N]').lower() == 'y'
+                confirmed_renewal = ask('Have you arranged renewal before expiry (manual token entry or an independently managed renewal service)? [y/N]').lower() == 'y'
         except (OSError, ValueError) as error:
             print(error)
 
@@ -366,7 +310,7 @@ def module_prerequisites(path):
 def mail_dns(path):
 
     import cloudflare_setup
-    if cloudflare_setup.CONFIG.exists():
+    if cloudflare_setup.active():
         cloudflare_setup.publish_dkim(path)
     while True:
         try:
