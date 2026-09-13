@@ -144,7 +144,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', choices=MODULES)
     parser.add_argument('--docker-login', choices=('push', 'pull'))
-    parser.add_argument('--modules', nargs='*', choices=MODULES)
+    parser.add_argument('--modules', nargs='*')
     args = parser.parse_args()
     if args.docker_login:
         configure_docker(args.docker_login)
