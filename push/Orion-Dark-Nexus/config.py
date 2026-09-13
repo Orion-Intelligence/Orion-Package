@@ -3,6 +3,8 @@ from pathlib import Path
 SLUG = 'dark-nexus'
 PORT = 8030
 MODULE = 'api.server:app'
+COMMAND = ['uvicorn', 'api.fastapi_app.app:create_fastapi_app', '--factory',
+           '--host', '0.0.0.0', '--port', '8030']
 PROJECT = 'orion-model-gateway'
 COMPOSE = 'docker-compose.prod.yml'
 BASE_IMAGE = 'python:3.13-slim'
@@ -14,16 +16,9 @@ INFERENCE_PACKAGES = {
 
 
 def ignore(directory, names, default):
-
-    if Path(directory).name == 'system_probe':
-        return [name for name in names if name == 'run_conformance.sh']
-    if Path(directory).name == 'probe_manager':
-        return [name for name in names if name not in {'__init__.py', 'system_probe'}]
-    if Path(directory).name == 'system_probe':
-        return [name for name in names if name not in {'__init__.py', 'fixtures'}]
     excluded = default(directory, names)
-    if Path(directory).name == 'api' and 'probe_manager' in excluded:
-        excluded.remove('probe_manager')
+    if Path(directory).name == 'api' and 'mcp2' in names:
+        excluded.append('mcp2')
     return excluded
 
 

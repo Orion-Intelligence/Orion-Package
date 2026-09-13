@@ -187,7 +187,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \\
         if configure.SLUG == 'social':
             suffix = suffix.replace('COPY prepare.py /build/prepare.py', 'COPY prepare.py /build/prepare.py\nCOPY obfuscation/ /build/obfuscation/')
         suffix += getattr(configure, 'RELEASE', '')
-        suffix += 'CMD ' + json.dumps(['uvicorn', configure.MODULE, '--host', '0.0.0.0', '--port', str(configure.PORT)]) + '\n'
+        command = getattr(configure, 'COMMAND',
+                          ['uvicorn', configure.MODULE, '--host', '0.0.0.0', '--port', str(configure.PORT)])
+        suffix += 'CMD ' + json.dumps(command) + '\n'
         (context / 'Dockerfile').write_text(prefix + suffix)
         run('docker', 'build', '--tag', image, str(context))
 
