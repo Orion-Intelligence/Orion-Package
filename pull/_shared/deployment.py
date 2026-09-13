@@ -1,10 +1,12 @@
 import argparse
+import getpass
 import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import sys
+import subprocess
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -68,6 +70,28 @@ def values(module, data):
     return result
 
 
+
+def configure_docker():
+    if not sys.stdin.isatty():
+        raise ValueError('Run pull.sh in a terminal to configure Docker Hub login')
+    default = os.environ.get('ORION_IMAGE_NAMESPACE', 'msmannan00')
+    print('Use a Docker Hub PAT with Read permission and an account with access to the image repositories.')
+    print('Docker saves this login for the current OS user using its credential store/config; it is not saved in application .env files.')
+    username = ask(f'Docker Hub username (Enter for {default})') or default
+    if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', username):
+        raise ValueError('Invalid Docker Hub username')
+    token = getpass.getpass('Docker Hub PAT (hidden): ').strip()
+    if not token or any(character.isspace() for character in token):
+        raise ValueError('Docker Hub PAT must be nonempty and contain no whitespace')
+    result = subprocess.run(
+        ['docker', 'login', '--username', username, '--password-stdin', 'docker.io'],
+        input=token + '\n', text=True, capture_output=True,
+    )
+    if result.returncode:
+        raise ValueError('Docker Hub login failed. Check the username, PAT validity, and registry connectivity; pulling was not started.')
+    print('Docker Hub login saved. Private images also require repository access; missing images must be built and pushed first.')
+
+
 def menu():
     if not sys.stdin.isatty():
         raise ValueError('Run pull.sh in a terminal to configure this VPS')
@@ -77,9 +101,14 @@ def menu():
             print(f"Project: {data['project_name']} | VPS IP: {data['server_ip']}")
             print('Application: https://' + data['project_name'] + '.orionintelligence.org')
             print('Mail: https://' + data['project_name'] + 'mail.orionintelligence.org')
-            choice = ask('1) Pull using these settings  2) Edit project/IP  3) Configure/change Cloudflare token')
+            choice = ask('1) Pull using these settings  2) Edit project/IP  3) Configure/change Cloudflare token  4) Configure/change Docker Hub PAT')
             if choice == '1':
+                login = ask('1) Use saved Docker login / public access  2) Configure Docker Hub PAT')
+                if login == '2':
+                    configure_docker()
                 return
+            if choice == '4':
+                configure_docker()
             if choice == '3':
                 from cloudflare_setup import configure
                 configure()

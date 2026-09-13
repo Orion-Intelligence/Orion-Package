@@ -27,7 +27,9 @@ def prepare(root):
                 _, prefix, raw, comment = document.entries[key]
                 lines.append(prefix + raw + comment + '\n')
             if previous:
-                for key in previous.entries.keys() - template.entries.keys():
+                for key in previous.entries:
+                    if key in template.entries:
+                        continue
                     _, prefix, raw, comment = previous.entries[key]
                     lines.append(prefix + raw + comment + '\n')
             content = ''.join(lines)
