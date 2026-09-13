@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -269,11 +270,15 @@ def module_prerequisites(path):
 def mail_dns(path):
 
     import cloudflare_setup
-    if cloudflare_setup.active():
-        cloudflare_setup.publish_dkim(path)
-    while True:
+    if not cloudflare_setup.active():
+        cloudflare_setup.configure()
+    _, client = cloudflare_setup.load()
+    client.verify()
+    document = Environment(path)
+    client.reconcile(cloudflare_setup.desired_records(document))
+    cloudflare_setup.publish_dkim(path)
+    for attempt in range(180):
         try:
-            document = Environment(path)
             domain = domains(document)[0]
             smtp = hostname(get(document, 'SMTP_HOSTNAME', domain))
             record = (path.parent / '.runtime/dkim-record.txt').read_text()
@@ -293,8 +298,10 @@ def mail_dns(path):
             print('Mail MX/SPF/DMARC records and matching DKIM key found. Delivery reputation, provider PTR and remote port filtering still require operator verification.')
             return
         except (OSError, ValueError) as error:
-            print(error)
-            ask('Add/correct the mail DNS records, allow propagation, then press Enter to retry')
+            if attempt == 179:
+                raise ValueError(f'Mail DNS did not propagate within 30 minutes: {error}') from None
+            show_error(error, 'Cloudflare records were applied automatically; waiting 10 seconds for public DNS propagation. Press Ctrl+C to cancel.')
+            time.sleep(10)
 
 
 def main(module=None):

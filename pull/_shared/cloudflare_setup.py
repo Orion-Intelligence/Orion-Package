@@ -161,11 +161,8 @@ def configure():
             break
         except ValueError as error:
             env.show_error(error, 'Paste a newly created User API token scoped to orionintelligence.org; do not enter a Token ID, Zone ID, Account ID, or Global API Key.')
-    while True:
-        email = env.ask('Let’s Encrypt account email')
-        if re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
-            break
-        env.show_error('A valid Let’s Encrypt account email is required', 'Enter a complete email address, or q to cancel.')
+    email = 'msmannan00@gmail.com'
+    print('Let’s Encrypt account email: ' + email)
     session_request('set', 'cloudflare', {'zone_id': zone, 'email': email, 'owner': owner, 'token': token})
     print('Cloudflare enabled for this run only; no token or Zone ID saved.')
 
