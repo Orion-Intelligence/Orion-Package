@@ -1,0 +1,12 @@
+TOR_PROXY_URL=socks5://trusted-social_tor_instace_1:9552
+INSTAGRAM_TOR_PROXY_URL=socks5://trusted-social_tor_instace_1:9552
+ORION_SESSION_ROOT=/app/sessions
+ORION_PLAYWRIGHT_HEADLESS=true
+ORION_RESET_SESSION=false
+S_SUPER_PASSWORD_V1={value_auto}
+REDIS_PASSWORD={value_auto}
+I2P_USERNAME=admin
+I2P_PASSWORD={value}
+TOR_PASSWORD={value_auto}
+S_LIGHT_HOUSE_API_KEY={value}
+ORION_SOCIAL_INTERNAL_TOKEN={value_auto}

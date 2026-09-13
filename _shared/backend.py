@@ -133,8 +133,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \\
 
 def pull(configure, env_file, image):
     env_file = env_file.resolve()
-    if not env_file.is_file():
-        raise RuntimeError(f'Missing runtime configuration: {env_file}')
     run('docker', 'pull', image)
     run(sys.executable, '-B', str(PACKAGE.parent / 'pull/_shared/deployment.py'), '--apply', env_file.parent.name)
     run(sys.executable, '-B', str(env_file.parent / 'fill_env.py'))

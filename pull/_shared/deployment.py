@@ -102,6 +102,8 @@ def main():
     args = parser.parse_args()
     if args.apply:
         data = load()
+        from runtime_env import prepare
+        prepare(ROOT)
         update(ROOT / args.apply / '.env', values(args.apply, data))
     else:
         menu()

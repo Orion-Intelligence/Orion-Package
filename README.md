@@ -50,7 +50,7 @@ Certificates are reused when valid. Initial setup configures Certbot DNS challen
 
 ### 2. Prepare module configuration
 
-Runtime configuration belongs in `pull/<repository>/.env`. These files are ignored by Git and are **not included in a fresh clone**: provision each selected module’s configuration from your existing deployment or its matching project settings before running the scripts. Fillers also need the configuration files for modules sharing credentials.
+Each module ships a checked-in `pull/<repository>/env` file containing safe defaults and credential placeholders. After downloading an image, pull creates or refreshes runtime `pull/<repository>/.env` from these files, applies the saved project/IP settings, and runs the filler. Shared modules are initialized together so shared credentials stay consistent. Existing runtime values—including passwords, encryption keys, API credentials, and extra settings—are preserved; new keys are added from `env`. Runtime `.env` files stay ignored by Git. For an existing deployment, restore its original `.env` before pulling; do not generate replacements for existing database/encryption credentials.
 
 - Keep internal service names and existing usernames unchanged.
 - Use `{value_auto}` only for supported passwords and encryption keys that may be generated for a **new** deployment.
@@ -97,7 +97,7 @@ Select modules and authenticate to Docker Hub with a token that can push to the 
 
 The default image namespace is `msmannan00` and the default tag is `latest`. Override them with `ORION_IMAGE_NAMESPACE` and `ORION_IMAGE_TAG`; use a published, versioned tag for controlled production upgrades.
 
-Build profiles live in `push/<repository>/`. Runtime `.env` files, fillers, and setup entrypoints live in `pull/<repository>/`. Keep the root `setup.sh`, `push.sh`, and `pull.sh` as the main entrypoints.
+Build profiles live in `push/<repository>/`. Checked-in `env` defaults, generated `.env` files, fillers, and setup entrypoints live in `pull/<repository>/`. Keep real secrets only in `.env`, never in the checked-in `env`. Keep the root `setup.sh`, `push.sh`, and `pull.sh` as the main entrypoints.
 
 ---
 

@@ -241,7 +241,6 @@ def unpack(payload, destination):
 
 
 def pull(env_file, image):
-    env_file.chmod(0o600)
     runtime = env_file.parent / '.runtime'
     run('docker', 'pull', image)
     run(sys.executable, '-B', str(PACKAGE_ROOT / 'pull/_shared/deployment.py'), '--apply', env_file.parent.name)

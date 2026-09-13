@@ -119,9 +119,6 @@ def build(repo, image):
 
 
 def pull(env_file, image):
-    if not env_file.is_file():
-        raise RuntimeError(f'Missing runtime configuration: {env_file}')
-    env_file.chmod(0o600)
     runtime = env_file.parent / '.runtime'
     environment = dict(os.environ, ORION_PACKAGE_IMAGE=image, ORION_ENV_FILE=str(env_file),
                        ORION_MAIL_RUNTIME=str(runtime))
