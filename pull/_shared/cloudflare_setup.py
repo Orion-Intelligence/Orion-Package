@@ -42,7 +42,13 @@ class Cloudflare:
             with build_opener(NoRedirect()).open(request, timeout=30) as response:
                 payload = json.load(response)
         except HTTPError as error:
-            raise ValueError(f'Cloudflare HTTP {error.code}: check token permissions, zone access, or API limits; no further changes made') from None
+            if error.code == 401:
+                raise ValueError('Cloudflare authentication failed (HTTP 401): the token is invalid, expired, revoked, or the wrong token type') from None
+            if error.code == 403:
+                raise ValueError('Cloudflare denied access (HTTP 403): check token permissions and zone access') from None
+            if error.code == 429:
+                raise ValueError('Cloudflare rate limit reached (HTTP 429): wait and retry') from None
+            raise ValueError(f'Cloudflare HTTP {error.code}: no further changes made') from None
         except (URLError, TimeoutError, OSError, ValueError):
             raise ValueError('Cloudflare request failed; check connectivity and retry. A timed-out write may have succeeded; the next run rechecks DNS.') from None
         if not payload.get('success'):
@@ -137,20 +143,31 @@ def load():
 
 
 def configure():
-    print('Zone ID: Cloudflare → orionintelligence.org → Overview → API → Zone ID.')
-    print('Token permissions: DNS Edit, Zone Read, Zone Settings Read; Settings Edit only to change SSL mode.')
+    print('Token permissions: Zone / DNS / Edit, Zone / Zone / Read, Zone / Zone Settings / Edit.')
     print('Cloudflare credentials are kept in memory only. Certificate renewal requires a new interactive run before expiry.')
-    zone = env.ask('Cloudflare Zone ID')
-    token = getpass.getpass('Cloudflare API token (hidden): ').strip()
-    email = env.ask('Let’s Encrypt account email')
-    if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
-        raise ValueError('A valid account email is required')
     from deployment import load as deployment_settings
     project = deployment_settings()['project_name']
     owner = 'orion-package:' + hashlib.sha256(project.encode()).hexdigest()[:32]
-    client = Cloudflare(zone, token, owner)
-    client.verify()
-    client.request('GET', client.base + '/settings/ssl')
+    while True:
+        token = getpass.getpass('Cloudflare API token for orionintelligence.org (hidden; Ctrl+C to cancel): ').strip()
+        try:
+            probe = Cloudflare('0' * 32, token, owner)
+            if probe.request('GET', '/user/tokens/verify')['result'].get('status') != 'active':
+                raise ValueError('Cloudflare token is not active')
+            zones = probe.request('GET', '/zones?' + urlencode({'name': 'orionintelligence.org', 'status': 'active'}))['result']
+            if len(zones) != 1 or zones[0].get('name') != 'orionintelligence.org':
+                raise ValueError('Token cannot access the active orionintelligence.org zone')
+            zone = zones[0].get('id', '')
+            client = Cloudflare(zone, token, owner)
+            client.request('GET', client.base + '/settings/ssl')
+            break
+        except ValueError as error:
+            env.show_error(error, 'Paste a newly created User API token scoped to orionintelligence.org; do not enter a Token ID, Zone ID, Account ID, or Global API Key.')
+    while True:
+        email = env.ask('Let’s Encrypt account email')
+        if re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
+            break
+        env.show_error('A valid Let’s Encrypt account email is required', 'Enter a complete email address, or q to cancel.')
     if env.ask('Enable Cloudflare DNS/certificate setup for this run only? [y/N]').lower() != 'y':
         raise ValueError('Cloudflare setup cancelled')
     session_request('set', 'cloudflare', {'zone_id': zone, 'email': email, 'owner': owner, 'token': token})

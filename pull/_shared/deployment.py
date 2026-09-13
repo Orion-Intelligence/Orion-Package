@@ -127,6 +127,9 @@ def menu(selected_modules=None):
                     configure()
                 except MenuBack:
                     continue
+                except ValueError as error:
+                    show_error(f'Cloudflare setup failed: {error}', 'Correct the reported value and select Cloudflare setup again, or choose Pull to use an existing certificate.')
+                    continue
             if choice != '2':
                 continue
             print('Editing updates this existing deployment; it does not create a second isolated stack. Existing credentials/data are retained.')
