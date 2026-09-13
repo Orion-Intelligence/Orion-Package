@@ -1,113 +1,21 @@
 # Orion-Package
 
-Build and publish Orion Docker images, or pull and deploy them on a VPS. Run this repository’s scripts directly on the host; the application services run in containers.
-
-## Setup and deployment
-
-### 1. Get the deployment tools
+Build/push Docker images or pull/deploy them on a VPS.
 
 ```bash
 git clone https://github.com/msmannan00/Orion-Package.git
 cd Orion-Package
-./setup.sh --system
-```
-
-The host setup checks Python 3.12+, Docker Engine, Docker Compose 2.30+, and supporting utilities. On compatible Ubuntu/Debian systems it offers to install missing dependencies with administrator approval. Existing conflicting installations, unsupported systems, and Docker permission problems require manual resolution; setup does not remove packages or loosen Docker socket permissions.
-
-`pull.sh` asks for a project name and public VPS IP on first use, saves them locally in
-`pull/.runtime/deployment.json`, and offers **pull** or **edit** on later runs. Project `acme`
-maps to `acme.orionintelligence.org`, `acmemail.orionintelligence.org`, and
-`acmetor.orionintelligence.org`. After downloading each module’s image, its managed public
-settings are applied to `.env`; internal Docker addresses and existing secrets remain unchanged.
-Intelligence renders its extracted production nginx configuration for the configured domains.
-Changing the project name updates this one deployment, not a separate parallel stack.
-
-### Cloudflare automation and Zone ID
-
-Find the **Zone ID** in [Cloudflare](https://dash.cloudflare.com/): select `orionintelligence.org`, open **Overview**, scroll to the **API** section, and copy **Zone ID** (not Account ID). [Official instructions](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/)
-
-Under **My Profile → API Tokens → Create Token → Create Custom Token**, scope the token to **only `orionintelligence.org`** and grant:
-
-- **Zone → DNS → Edit** for deployment records and Certbot DNS challenges.
-- **Zone → Zone → Read** to verify the selected zone.
-- **Zone → Zone Settings → Read** to check SSL mode; use **Edit** if you want setup to change it to Full (strict), which still requires separate approval because it affects the entire zone.
-
-Choose automated Cloudflare setup in the certificate menu, or configure it beforehand:
-
-```bash
-python3 pull/_shared/cloudflare_setup.py
-```
-
-Enter the Zone ID, token (hidden input), and Let’s Encrypt email. The project menu also offers a Cloudflare configuration option. The token is saved in `pull/.runtime/cloudflare/token.ini` with mode `600`, outside module `.env` files. A root-owned copy is installed under `/etc/letsencrypt/orion-package/` for scheduled renewal; it is never copied into application images. Restrict token access to this zone and keep it valid for renewals.
-
-For project `acme`, Intelligence (`acme.orionintelligence.org`) and webmail (`acmemail.orionintelligence.org`) are proxied. SMTP uses **DNS-only** `acmesmtp.orionintelligence.org`; mailbox addresses continue to use the webmail domain. Tor2Web’s base hostname and `*.onion.acmetor.orionintelligence.org` stay DNS-only because ordinary Universal SSL does not cover those deep wildcard hostnames.
-
-Setup previews DNS changes and asks before applying them. It updates only records it created, reuses already-matching records, and stops on conflicting/unrelated records. Renaming a project does not delete its old records. MX, a single-server SPF policy, and a monitoring-only DMARC policy (`p=none`) are provisioned for the mail domain; review DMARC enforcement after checking delivery. The generated DKIM **public** key is published before mail startup. Existing conflicting mail-provider records are never overwritten automatically.
-
-Certificates are reused when valid. Initial setup configures Certbot DNS challenges, verifies renewal with a dry run, enables `certbot.timer`, and installs a root-owned Orion nginx/Postfix reload hook. Token changes trigger renewal verification again. API errors stop deployment; DNS/edge-certificate propagation offers a retry prompt. Changes are not a cross-service transaction and are not automatically rolled back.
-
-**Rebuild and push Orion-mail once before using this flow:** its image now supports a separate SMTP hostname. Pull refuses older mail images before changing DNS. The current Postfix profile requires a public IPv4 address. Configure reverse DNS/PTR to the SMTP hostname through your VPS provider and confirm TCP 25 is allowed; Cloudflare cannot configure those provider settings. Tor2Web and the shared edge cannot both bind the same host port—keep their listeners on separate host IPs/ports or separate servers.
-
-Push automatically clones missing source repositories from `https://github.com/Orion-Intelligence/<repository>.git`, using `trusted-main`, into the directory beside Orion-Package (or `ORION_BASE_DIR`). Existing checkouts are updated safely; dirty/diverged checkouts and existing non-Git paths stop the build without overwriting them.
-
-For private GitHub source repositories, push asks for a separate **GitHub PAT** during the `trusted-main` fetch. Grant repository **Contents: Read** access and any required organization approval. Input is hidden, no username/password entry is needed, and the token is not saved. Each protected repository fetch may prompt again. SSH remotes retain their existing SSH authentication.
-
-### Docker Hub login
-
-Choose **Configure/change Docker Hub PAT** (option 4) in the project menu, or configure it when prompted before pulling. Enter your Docker Hub username and a PAT with **Read** permission for the image repositories. Input is hidden and passed to `docker login --password-stdin`; Docker saves the login for the current OS user, not in module `.env` files. Without a credential helper, Docker's config stores credentials in base64, not encrypted. Use the same OS user for subsequent pulls.
-
-A successful login does not create an image or grant repository access. If `msmannan00/orion-intelligence:latest` has not been published, build and push Orion-Intelligence first using `./push.sh` on the build machine. Publishing requires **Read & Write** permission. Docker Hub PATs are separate from Cloudflare API tokens.
-
-### 2. Prepare module configuration
-
-Each module ships a checked-in `pull/<repository>/env` file containing safe defaults and credential placeholders. After downloading an image, pull creates or refreshes runtime `pull/<repository>/.env` from these files, applies the saved project/IP settings, and runs the filler. Shared modules are initialized together so shared credentials stay consistent. Existing runtime values—including passwords, encryption keys, API credentials, and extra settings—are preserved; new keys are added from `env`. Runtime `.env` files stay ignored by Git. For an existing deployment, restore its original `.env` before pulling; do not generate replacements for existing database/encryption credentials.
-
-- Keep internal service names and existing usernames unchanged.
-- Use `{value_auto}` only for supported passwords and encryption keys that may be generated for a **new** deployment.
-- Supply external API credentials and other `{value}` settings manually.
-- For an existing installation, preserve its original passwords and encryption keys. Generating replacements does not update database accounts or re-encrypt stored data.
-- Never commit `.env` files, Cloudflare tokens, or private certificates.
-
-### 3. Pull and start services
-
-```bash
-./pull.sh
-```
-
-Use **Up/Down** to navigate, **Space** to select/unselect modules or **All**, and **Enter** to continue. Single-choice actions, confirmations, and retry prompts use arrow-key radio menus (Left/Right also work); **q/Esc** cancels. Only actual values such as project name, IP, Zone ID, email, and token use text input. Implemented modules are Intelligence, Micros, Social, Dark Nexus, Mail, and Tor2Web; the other listed modules are pending.
-
-The workflow checks host dependencies, downloads each selected application image, runs its environment filler, and opens its setup menu before deployment. Missing requirements block progress and provide retry instructions.
-
-- **Intelligence, Mail, Tor2Web:** confirm or change public domains, configure DNS, and verify matching Let’s Encrypt certificates and renewal. Cloudflare DNS-based issuance is available with explicit approval and a protected API-token credentials file.
-- **Micros, Social, Dark Nexus:** use internal service networking; public domains and Let’s Encrypt certificates are not required for these internal services.
-- **Mail:** requires the shared Intelligence edge and matching mail DNS records, including the generated DKIM public key.
-- **Dark Nexus:** requires its sandbox egress firewall, mTLS credentials, and reachable sandbox server; setup does not disable those protections.
-
-To revisit setup without deploying:
-
-```bash
-./setup.sh                         # Host checks, then module selection
-./setup.sh Orion-Tor2Web            # Configure one module
-./setup.sh --help
-```
-
-Standalone setup does not download images or generate secrets automatically. The normal `pull.sh` workflow runs fillers after downloading. If needed, invoke `python3 pull/<repository>/fill_env.py` explicitly, or `python3 pull/fill_env.py --all` for all modules and shared credentials. Do not use `--regenerate` on an existing deployment without a planned credential rotation.
-
-### Build and push images
-
-On the build machine, place the matching Orion source repositories alongside `Orion-Package`, or set `ORION_BASE_DIR` to their parent directory:
-
-```bash
 ./push.sh
 ```
 
-Each selected source checkout is fetched and fast-forwarded to `origin/trusted-main` before building. Dirty or diverged checkouts stop the operation without discarding local work. Any build/push/deployment failure stops the remaining modules and displays the error; fix the cause and rerun.
+Use `./push.sh` to build and publish, or `./pull.sh` to deploy published images. Both check host dependencies and offer installation when supported. Use `./setup.sh` to revisit setup.
 
-Select modules and authenticate to Docker Hub with a token that can push to the target namespace. Push checks build prerequisites, builds images, and publishes them; it does not run deployment menus, generate runtime secrets, or issue certificates.
+- **Push:** clones missing sources into `clone/<repository>/` inside this package, updates `trusted-main`, builds, and pushes to `msmannan00/<image>:latest`. Dirty/diverged checkouts stop the build. GitHub PAT: **Contents: Read** on all selected repositories, entered once and reused for this push (temporary credentials removed on normal exit/cancellation); Docker Hub PAT: **Read & Write**.
+- **Pull:** select modules, enter project name/VPS IP, and follow setup prompts. Docker Hub PAT: **Read**. Project/IP settings are saved for reuse or editing.
+- **Configuration:** `pull/<repo>/env` supplies defaults; pull creates `.env`, generates supported secrets, and preserves existing values. Fill remaining `{value}` entries manually. Never commit secrets or replace existing database/encryption credentials.
+- **Cloudflare:** supply a token scoped to `orionintelligence.org` with **DNS: Edit**, **Zone: Read**, and **Zone Settings: Read** (Edit to change SSL mode). Find the **Zone ID** under the domain’s **Overview → API**. Setup handles DNS and Let’s Encrypt renewal with approval; mail PTR/TCP 25 still require VPS-provider configuration.
 
-The default image namespace is `msmannan00` and the default tag is `latest`. Override them with `ORION_IMAGE_NAMESPACE` and `ORION_IMAGE_TAG`; use a published, versioned tag for controlled production upgrades.
-
-Build profiles live in `push/<repository>/`. Checked-in `env` defaults, generated `.env` files, fillers, and setup entrypoints live in `pull/<repository>/`. Keep real secrets only in `.env`, never in the checked-in `env`. Keep the root `setup.sh`, `push.sh`, and `pull.sh` as the main entrypoints.
+**Controls:** arrows to navigate, Space to select, Enter to confirm, q/Esc to cancel. Any failure stops the remaining modules; fix it and rerun.
 
 ---
 

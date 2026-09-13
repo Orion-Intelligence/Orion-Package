@@ -6,7 +6,7 @@ source_git() {
     local url="$1"
     shift
     if [[ "$url" == https://github.com/* ]]; then
-        printf 'GitHub source login: use a GitHub PAT with repository Contents: Read access. It is not saved.\n'
+        printf 'GitHub source login: one PAT with Contents: Read access to all selected repositories; reused for this push only.\n'
         GIT_ASKPASS="$(dirname "${BASH_SOURCE[0]}")/github_askpass.py" GIT_TERMINAL_PROMPT=0 \
             git -c credential.helper= -c core.askPass= "$@"
     else

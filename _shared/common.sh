@@ -22,6 +22,7 @@ pull_backend() {
 dispatch() (
     REPO_PACKAGE_DIR="$PACKAGE_DIR/push/$1"
     REPO_SOURCE_DIR="$ORION_BASE_DIR/$1"
+    if [[ "$ACTION" == push ]]; then REPO_SOURCE_DIR="$PACKAGE_DIR/clone/$1"; fi
     ENV_FILE="$PACKAGE_DIR/pull/$1/.env"
     export ORION_SOURCE_DIR="$REPO_SOURCE_DIR"
     source "$REPO_PACKAGE_DIR/repo.sh" || return $?
@@ -104,6 +105,11 @@ main() {
         if [[ "$ACTION" == push && "$logged_in" == 0 ]]; then
             printf 'Docker Hub login: enter a token with Read & Write access.\n'
             docker login --username "$ORION_IMAGE_NAMESPACE" || return $?
+            ORION_GITHUB_AUTH_DIR="$(mktemp -d /tmp/orion-github-auth.XXXXXXXXXX)" || return $?
+            export ORION_GITHUB_AUTH_DIR
+            trap 'rm -f -- "$ORION_GITHUB_AUTH_DIR/token"; rmdir -- "$ORION_GITHUB_AUTH_DIR"' EXIT
+            trap 'exit 130' INT
+            trap 'exit 143' TERM
             logged_in=1
         fi
         if dispatch "$repository"; then
