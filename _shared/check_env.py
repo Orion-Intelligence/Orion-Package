@@ -1,4 +1,3 @@
-"""Refuse unconfigured deployments without printing any credential values."""
 from pathlib import Path
 import re
 import sys
@@ -6,14 +5,14 @@ import sys
 
 def check_env(path: Path) -> None:
     if not path.is_file():
-        raise ValueError(f'{path}: copy template-env to .env and configure it first')
+        raise ValueError(f'{path}: create and configure this .env file first')
     missing = []
     for line in path.read_text().splitlines():
         match = re.match(r'^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$', line)
-        if match and '{value}' in match[2]:
+        if match and any(marker in match[2] for marker in ('{value}', '{value_auto}')):
             missing.append(match[1])
     if missing:
-        raise ValueError(f'{path}: replace {{value}} for: {", ".join(missing)}')
+        raise ValueError(f'{path}: fill {{value}} / {{value_auto}} for: {", ".join(missing)}')
 
 
 if __name__ == '__main__':

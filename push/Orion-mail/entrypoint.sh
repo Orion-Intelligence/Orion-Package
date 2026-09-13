@@ -4,7 +4,7 @@ set -eu
 check_certificate() {
     certificate="${ORION_MAIL_CERT_DIR:-/etc/letsencrypt/live/try.orionintelligence.org}/fullchain.pem"
     private_key="${certificate%/*}/privkey.pem"
-    openssl x509 -in "$certificate" -noout -checkhost "${MAIL_DOMAIN:-mail.orionintelligence.org}"
+    openssl x509 -in "$certificate" -noout -checkhost "${SMTP_HOSTNAME:-${MAIL_DOMAIN:-mail.orionintelligence.org}}"
     openssl x509 -in "$certificate" -noout -checkend 86400
     openssl verify -untrusted "$certificate" "$certificate"
     python3 -c 'import ssl,sys; ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER).load_cert_chain(sys.argv[1], sys.argv[2])' "$certificate" "$private_key"
@@ -43,7 +43,6 @@ case "${1:-web}" in
         ;;
     postfix)
         refresh_certificate
-        # Postfix has only the mail backend network; never trust every Docker subnet.
         relay_network="$(ip -4 route show dev eth0 proto kernel scope link | awk 'NR == 1 {print $1}')"
         test -n "$relay_network"
         export POSTFIX_MYNETWORKS="127.0.0.0/8 $relay_network"

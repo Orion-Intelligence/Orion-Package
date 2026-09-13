@@ -1,8 +1,0 @@
-# Static service settings: existing package defaults, no credentials are embedded.
-BASEHOST=tor.orionintelligence.org
-HTTPS_PORT=443
-LETSENCRYPT_CERT_NAME=onion-tor-orionintelligence-org
-LETSENCRYPT_DIR=/etc/letsencrypt
-T2W_PROCESSES=2
-
-# Deployment prerequisite: provision the matching Let's Encrypt certificate and renewal job.

@@ -4,8 +4,8 @@ PACKAGE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ORION_BASE_DIR="${ORION_BASE_DIR:-$(cd -- "$PACKAGE_DIR/.." && pwd)}"
 ORION_IMAGE_NAMESPACE="${ORION_IMAGE_NAMESPACE:-msmannan00}"
 ORION_IMAGE_TAG="${ORION_IMAGE_TAG:-latest}"
-REPOSITORIES=(Orion-Crawler Orion-Dark-Nexus Orion-Intelligence Orion-mail
-    Orion-Micros Orion-Sandbox Orion-Social Orion-Storage Orion-Tor2Web)
+REPOSITORIES=(Orion-Intelligence Orion-Micros Orion-Social Orion-Dark-Nexus
+    Orion-mail Orion-Tor2Web Orion-Crawler Orion-Sandbox Orion-Storage)
 SELECTED=(0 0 0 0 0 0 0 0 0)
 
 pending() { printf '%s: %s not implemented yet.\n' "$1" "$ACTION" >&2; return 1; }
@@ -20,12 +20,13 @@ pull_backend() {
 }
 
 dispatch() (
-    REPO_PACKAGE_DIR="$PACKAGE_DIR/$1"
+    REPO_PACKAGE_DIR="$PACKAGE_DIR/push/$1"
     REPO_SOURCE_DIR="$ORION_BASE_DIR/$1"
-    ENV_FILE="$REPO_PACKAGE_DIR/.env"
+    ENV_FILE="$PACKAGE_DIR/pull/$1/.env"
     export ORION_SOURCE_DIR="$REPO_SOURCE_DIR"
     source "$REPO_PACKAGE_DIR/repo.sh" || return $?
     IMAGE="$ORION_IMAGE_NAMESPACE/orion-$SLUG:$ORION_IMAGE_TAG"
+    if [[ "$ACTION" == push ]]; then bash "$PACKAGE_DIR/_shared/source.sh" "$REPO_SOURCE_DIR" || return $?; fi
     "$ACTION"
 )
 
@@ -59,7 +60,7 @@ choose_repositories() {
             printf '  [%s] %-24s\033[0m\n' "$checked" "$label"
         done
         printf '\nSelected: %s/%s | %s:<%s>\n' "$count" "$total" "$ORION_IMAGE_NAMESPACE" "$ORION_IMAGE_TAG"
-        printf 'Ready: Tor2Web, Micros, Social, Dark Nexus, Mail. Other handlers are pending.\n'
+        printf 'Ready: Intelligence, Tor2Web, Micros, Social, Dark Nexus, Mail. Other handlers are pending.\n'
         IFS= read -rsn1 key || exit 130
         if [[ "$key" == $'\033' ]]; then
             suffix=''
@@ -89,30 +90,29 @@ choose_repositories() {
 main() {
     if (($#)); then printf 'Usage: %s (interactive)\n' "$0" >&2; return 1; fi
     choose_repositories || return $?
-    local index repository failed=0 logged_in=0
-    if [[ "$ACTION" == pull ]]; then
-        local env_files=()
-        for index in "${!REPOSITORIES[@]}"; do
-            ((SELECTED[index])) || continue
-            repository="${REPOSITORIES[index]}"
-            [[ ! -f "$PACKAGE_DIR/$repository/repo.sh" ]] || env_files+=("$PACKAGE_DIR/$repository/.env")
-        done
-        python3 -B "$PACKAGE_DIR/_shared/check_env.py" "${env_files[@]}" || return $?
-    fi
+    bash "$PACKAGE_DIR/setup.sh" --system "$ACTION" || return $?
+    if [[ "$ACTION" == pull ]]; then python3 -B "$PACKAGE_DIR/pull/_shared/deployment.py" || return $?; fi
+    local index repository logged_in=0 status
     for index in "${!REPOSITORIES[@]}"; do
         ((SELECTED[index])) || continue
         repository="${REPOSITORIES[index]}"
         printf '\n%s: %s\n' "$ACTION" "$repository"
-        if [[ ! -f "$PACKAGE_DIR/$repository/repo.sh" ]]; then
-            pending "$repository" || failed=1
-            continue
+        if [[ ! -f "$PACKAGE_DIR/push/$repository/repo.sh" ]]; then
+            pending "$repository"
+            return 1
         fi
         if [[ "$ACTION" == push && "$logged_in" == 0 ]]; then
             printf 'Docker Hub login: enter a token with Read & Write access.\n'
             docker login --username "$ORION_IMAGE_NAMESPACE" || return $?
             logged_in=1
         fi
-        dispatch "$repository" || failed=1
+        if dispatch "$repository"; then
+            :
+        else
+            status=$?
+            printf '%s %s failed (exit %s). Stopping; see the error above. Existing services are not automatically removed.\n' "$ACTION" "$repository" "$status" >&2
+            return "$status"
+        fi
     done
-    return "$failed"
+    return 0
 }

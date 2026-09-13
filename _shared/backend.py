@@ -1,4 +1,3 @@
-"""Shared packaging for the three backend repositories; Python stdlib only."""
 import importlib.util
 import json
 import os
@@ -30,7 +29,7 @@ def deployment(configure, repo):
                  '--format', 'json', capture_output=True, text=True)
     config = json.loads(result.stdout)
     config['name'] = configure.PROJECT
-    # Let Compose derive managed resource names from the actual project name.
+
     for group in ('networks', 'volumes'):
         for resource in config.get(group, {}).values():
             if not resource.get('external'):
@@ -43,7 +42,7 @@ def deployment(configure, repo):
             service.pop('pull_policy', None)
         if 'env_file' in service:
             service['env_file'] = ['${ORION_ENV_FILE:?Set the runtime env file}']
-        # Application/model assets ship in the image. Keep state and mTLS mounts.
+
         volumes = []
         for volume in service.get('volumes', []):
             target = volume['target']
@@ -136,14 +135,20 @@ def pull(configure, env_file, image):
     env_file = env_file.resolve()
     if not env_file.is_file():
         raise RuntimeError(f'Missing runtime configuration: {env_file}')
+    run('docker', 'pull', image)
+    run(sys.executable, '-B', str(PACKAGE.parent / 'pull/_shared/deployment.py'), '--apply', env_file.parent.name)
+    run(sys.executable, '-B', str(env_file.parent / 'fill_env.py'))
+    run(sys.executable, '-B', str(env_file.parent / 'setup.py'))
     if hasattr(configure, 'check_runtime'):
         configure.check_runtime()
-    run('docker', 'pull', image)
     manifest = run('docker', 'run', '--rm', '--network', 'none', '--entrypoint', '/bin/cat',
                    image, '/opt/orion/compose.json', capture_output=True, text=True).stdout
     config = json.loads(manifest)
     if config['services']['api']['image'] != '${ORION_PACKAGE_IMAGE:?Select the application image}':
         raise RuntimeError('Unexpected deployment manifest')
+    runtime = env_file.parent / '.runtime'
+    runtime.mkdir(parents=True, exist_ok=True)
+    (runtime / 'compose.json').write_text(manifest)
     env = dict(os.environ, ORION_ENV_FILE=str(env_file), ORION_PACKAGE_IMAGE=image)
     env.setdefault('ORION_SOURCE_DIR', str(PACKAGE.parents[1] / Path(configure.__file__).parent.name))
     with tempfile.TemporaryDirectory(prefix=f'orion-{configure.SLUG}-pull-') as directory:

@@ -36,7 +36,6 @@ main = 'tor2web/t2w.py'
 patch(main, '[sys.executable, os.path.abspath(__file__)]',
       "[sys.executable, '-c', 'import tor2web.t2w']")
 
-# Twisted requires a native Python generator; bridge the compiled generator.
 bridge = '''
 def _compiled_inline_callbacks(function):
     namespace = {'function': function}
@@ -58,7 +57,6 @@ setup(
 assert len(list(Path('/compiled').rglob('*.so'))) == len(modules), 'Incomplete compilation'
 PY
 
-# Only compiled application code enters the published image and its layers.
 FROM runtime AS release
 RUN apt-get update && apt-get install -y --no-install-recommends nginx \
  && rm -rf /var/lib/apt/lists/*

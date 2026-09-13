@@ -1,4 +1,3 @@
-"""Build-only Social automation packaging."""
 import json
 from pathlib import Path
 import shutil

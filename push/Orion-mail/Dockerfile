@@ -18,6 +18,7 @@ COPY compile_backend.py prepare.py /build/
 RUN python /build/compile_backend.py
 
 FROM python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a
+LABEL orion.package.smtp-hostname="1"
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app HOME=/tmp
 RUN printf 'postfix postfix/mailname string localhost\npostfix postfix/main_mailer_type string Internet Site\n' | debconf-set-selections \
  && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

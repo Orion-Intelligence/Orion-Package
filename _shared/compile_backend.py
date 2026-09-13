@@ -1,4 +1,3 @@
-"""Runs only in the Docker compiler stage; never included in the release."""
 import os
 from pathlib import Path
 import runpy
@@ -21,7 +20,7 @@ setup(name='orion-compiled', ext_modules=cythonize(
     script_args=['build_ext', '--build-lib', '/release', '--parallel', '2'])
 assert len(list(Path('/release').rglob('*.so'))) == len(modules), 'Incomplete compilation'
 
-# Copy runtime assets only after compilation; neither source nor C/build files ship.
+
 for path in root.rglob('*'):
     if not path.is_file() or path.suffix in {'.py', '.pyc', '.pyo', '.c', '.h', '.o'}:
         continue

@@ -14,7 +14,7 @@ RELEASE = 'USER 65534:65534\n'
 
 
 def ignore(directory, names, default):
-    # MCP imports conformance fixture registrations even outside test mode.
+
     if Path(directory).name == 'probe_manager':
         return [name for name in names if name not in {'__init__.py', 'system_probe'}]
     if Path(directory).name == 'system_probe':

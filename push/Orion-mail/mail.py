@@ -1,4 +1,3 @@
-"""Build one mail image; preserve mail storage and shared proxy configuration."""
 import base64
 import copy
 import io
@@ -14,6 +13,7 @@ import tempfile
 from urllib.parse import urlsplit
 
 PACKAGE = Path(__file__).resolve().parent
+PACKAGE_ROOT = PACKAGE.parents[1]
 IMAGE_VARIABLE = '${ORION_PACKAGE_IMAGE:?Select the mail image}'
 RUNTIME = '${ORION_MAIL_RUNTIME:?Set the mail runtime directory}'
 
@@ -33,7 +33,7 @@ def deployment(repo):
             if not item.get('external'):
                 item.pop('name', None)
     services = config['services']
-    del services['certbot']  # TLS termination/issuance belong to the existing shared edge.
+    del services['certbot']
     for name in ('web', 'postfix', 'nginx'):
         service = services[name]
         service.pop('build', None)
@@ -59,6 +59,7 @@ def deployment(repo):
     postfix['depends_on']['web']['condition'] = 'service_healthy'
     postfix['depends_on']['rspamd']['condition'] = 'service_healthy'
     postfix['environment'].pop('POSTFIX_MYNETWORKS', None)
+    postfix['environment']['SMTP_HOSTNAME'] = '${SMTP_HOSTNAME:?Set the DNS-only SMTP hostname}'
     postfix['environment']['ORION_MAIL_CERT_DIR'] = '${ORION_MAIL_CERT_DIR:-/etc/letsencrypt/live/try.orionintelligence.org}'
     postfix['volumes'].append({'type': 'bind', 'source': '${ORION_LETSENCRYPT_DIR:-/etc/letsencrypt}',
                                'target': '/etc/letsencrypt', 'read_only': True,
@@ -112,7 +113,7 @@ def build(repo, image):
             line for line in dependencies if not line.startswith(('pytest', 'coverage'))) + '\n')
         for name in ('Dockerfile', 'prepare.py', 'entrypoint.sh'):
             shutil.copy2(PACKAGE / name, context / name)
-        shutil.copy2(PACKAGE.parent / '_shared/compile_backend.py', context / 'compile_backend.py')
+        shutil.copy2(PACKAGE_ROOT / '_shared/compile_backend.py', context / 'compile_backend.py')
         (context / 'compose.json').write_text(json.dumps(deployment(repo)))
         run('docker', 'build', '--tag', image, str(context))
 
@@ -124,14 +125,22 @@ def pull(env_file, image):
     runtime = env_file.parent / '.runtime'
     environment = dict(os.environ, ORION_PACKAGE_IMAGE=image, ORION_ENV_FILE=str(env_file),
                        ORION_MAIL_RUNTIME=str(runtime))
-    environment.setdefault('ORION_SOURCE_DIR', str(PACKAGE.parents[1] / 'Orion-mail'))
+    environment.setdefault('ORION_SOURCE_DIR', str(PACKAGE_ROOT.parent / 'Orion-mail'))
     run('docker', 'pull', image)
+    capability = run('docker', 'image', 'inspect', '--format', '{{index .Config.Labels "orion.package.smtp-hostname"}}', image, capture_output=True, text=True).stdout.strip()
+    if capability != '1':
+        raise RuntimeError('Rebuild/push Orion-mail with this package first: the downloaded image does not support a separate SMTP hostname. No DNS changes were made.')
+    run(sys.executable, '-B', str(PACKAGE_ROOT / 'pull/_shared/deployment.py'), '--apply', env_file.parent.name)
+    run(sys.executable, '-B', str(env_file.parent / 'fill_env.py'))
+    run(sys.executable, '-B', str(env_file.parent / 'setup.py'))
     manifest = run('docker', 'run', '--rm', '--network', 'none', '--entrypoint', 'cat',
                    image, '/opt/orion/compose.json', capture_output=True, text=True).stdout
     config = json.loads(manifest)
     if config.get('name') != 'orion-mail' or any(
             config['services'][name]['image'] != IMAGE_VARIABLE for name in ('web', 'cron', 'postfix', 'nginx')):
         raise RuntimeError('Unexpected mail deployment manifest')
+    runtime.mkdir(parents=True, exist_ok=True)
+    (runtime / 'compose.json').write_text(manifest)
     with tempfile.TemporaryDirectory(prefix='orion-mail-pull-') as directory:
         compose_file = Path(directory) / 'compose.json'
         compose_file.write_text(manifest)
@@ -155,7 +164,7 @@ def pull(env_file, image):
         cert_mount = next(item for item in services['postfix']['volumes'] if item['target'] == '/etc/letsencrypt')
         run('docker', 'run', '--rm', '--network', 'none', '--read-only', '--user', '0:0',
             '--mount', f"type=bind,src={cert_mount['source']},dst=/etc/letsencrypt,readonly",
-            '--env', f'MAIL_DOMAIN={domain}', '--env',
+            '--env', f'MAIL_DOMAIN={domain}', '--env', 'SMTP_HOSTNAME=' + services['postfix']['environment']['SMTP_HOSTNAME'], '--env',
             'ORION_MAIL_CERT_DIR=' + services['postfix']['environment']['ORION_MAIL_CERT_DIR'], image, 'check')
         compose('pull')
         payload = run('docker', 'run', '--rm', '--network', 'none', '--entrypoint', 'tar', image,
@@ -170,7 +179,7 @@ def pull(env_file, image):
             raise RuntimeError('Rspamd did not return a valid password hash')
         secret = runtime / 'rspamd/worker-controller-secret.inc'
         secret.write_text(f'password = "{hashed}";\nenable_password = "{hashed}";\n')
-        secret.chmod(0o644)  # Contains only the salted hash; Rspamd runs as UID 11333.
+        secret.chmod(0o644)
         attachment = next(item['source'] for item in services['web']['volumes']
                           if item['target'] == '/app/static/resource/attachments')
         Path(attachment).mkdir(parents=True, exist_ok=True)
@@ -183,6 +192,7 @@ def pull(env_file, image):
         if public_key.strip():
             (runtime / 'dkim-record.txt').write_text(public_key)
             print(f'DKIM public DNS record: {runtime / "dkim-record.txt"} (publish it in DNS if not already present)')
+        run(sys.executable, '-B', str(PACKAGE_ROOT / 'pull/_shared/environment.py'), '--mail-dns', str(env_file))
         compose('up', '--detach', '--no-build', '--wait', '--wait-timeout', '900')
         compose('exec', '-T', 'rspamd', 'rspamadm', 'control', 'reload')
         run('docker', 'exec', edge, 'nginx', '-t')

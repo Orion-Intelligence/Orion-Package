@@ -1,4 +1,3 @@
-"""Build-only adaptations for compiled MCP and portable sandbox worker payloads."""
 import ast
 from pathlib import Path
 import zlib
@@ -31,8 +30,8 @@ source = server.read_text()
 guard = 'if __name__ == "__main__":'
 assert source.count(guard) == 1, 'Review MCP entrypoint: source changed'
 source = source.replace(guard, 'def main():')
-# MCP/Pydantic validate_call requires native Python functions. Keep validation,
-# signatures and async behavior while delegating to the compiled implementation.
+
+
 bridge = '''
 import inspect
 from typing import get_type_hints
@@ -74,14 +73,14 @@ class _CompiledMCPServer(MCPServer):
 assert source.count('mcp = MCPServer(') == 1, 'Review MCP registration: source changed'
 server.write_text(source.replace('mcp = MCPServer(', bridge + 'mcp = _CompiledMCPServer('))
 
-# Pydantic must recognize compiled methods as methods, not untyped model fields.
+
 chat = Path('/build/app/api/mcp2/orion/llm_core/llm_bridge/chat_model.py')
 source = chat.read_text()
 declaration = 'class OrionChatOllama(ChatOllama):\n'
 assert source.count(declaration) == 1, 'Review compiled chat model: source changed'
 chat.write_text(source.replace(declaration, declaration + '    model_config = {"ignored_types": (type(lambda: None),)}\n'))
 
-# This upstream module uses urlsplit without importing it. Fix only the build copy.
+
 model = Path('/build/app/api/mcp2/orion/shared/pentest/javascript_secret_scan/javascript_secret_scan_model.py')
 source = model.read_text()
 if 'from urllib.parse import urlsplit' not in source:
