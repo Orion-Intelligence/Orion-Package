@@ -235,11 +235,7 @@ def tls_menu(path):
                 continue
             for host in hosts:
                 socket.getaddrinfo(host.replace('*.', 'setup-check.'), 443, type=socket.SOCK_STREAM)
-            if ask('Confirm DNS targets this VPS, Cloudflare uses Full (strict), and firewall rules are ready [y/N]').lower() != 'y':
-                raise ValueError('Manual DNS confirmation is required')
             check_certificate(document)
-            if ask('Confirm certificate renewal is arranged before expiry [y/N]').lower() != 'y':
-                raise ValueError('Certificate renewal must be arranged before deployment')
             return
         except MenuBack:
             continue
