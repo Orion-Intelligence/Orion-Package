@@ -58,6 +58,8 @@ def values(module, data):
     result = {'PROJECT_NAME': project, 'SERVER_IP': data['server_ip']}
     if module == 'Orion-Intelligence':
         result.update(APP_URL='https://' + app, PRODUCTION_DOMAIN='https://' + app,
+                      ELASTIC_ROOT_USERNAME='elastic', ELASTIC_ROOT_IP='elasticsearch',
+                      ELASTIC_STEALER_IP='37.27.128.168',
                       TENANT_BASE_DOMAIN='orionintelligence.org', MAIL_DOMAIN=mail,
                       ORION_MAIL_PUBLIC_URL='https://' + mail,
                       ORION_MAIL_REDIRECT_URIS='https://' + mail + '/auth/callback',
