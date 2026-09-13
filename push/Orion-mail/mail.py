@@ -114,6 +114,8 @@ def build(repo, image):
         for name in ('Dockerfile', 'prepare.py', 'entrypoint.sh'):
             shutil.copy2(PACKAGE / name, context / name)
         shutil.copy2(PACKAGE_ROOT / '_shared/compile_backend.py', context / 'compile_backend.py')
+        shutil.copy2(PACKAGE_ROOT / '_shared/audit_release.py', context / 'audit_release.py')
+        shutil.copytree(PACKAGE_ROOT / '_shared/obfuscation', context / 'obfuscation')
         (context / 'compose.json').write_text(json.dumps(deployment(repo)))
         run('docker', 'build', '--tag', image, str(context))
 

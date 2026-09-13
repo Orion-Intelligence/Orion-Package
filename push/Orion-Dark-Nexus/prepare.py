@@ -27,6 +27,8 @@ lines[method.lineno - 1:method.end_lineno] = [
 service.write_text(''.join(lines))
 server = Path('/build/app/api/mcp2/server.py')
 source = server.read_text()
+descriptions = {node.name: ast.get_docstring(node) for node in ast.parse(source).body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
 guard = 'if __name__ == "__main__":'
 assert source.count(guard) == 1, 'Review MCP entrypoint: source changed'
 source = source.replace(guard, 'def main():')
@@ -53,7 +55,7 @@ def _native_callback(function):
     callback.__annotations__ = annotations
     callback.__name__ = function.__name__
     callback.__module__ = function.__module__
-    callback.__doc__ = function.__doc__
+    callback.__doc__ = _MCP_DESCRIPTIONS.get(function.__name__)
     return callback
 
 class _CompiledMCPServer(MCPServer):
@@ -71,7 +73,7 @@ class _CompiledMCPServer(MCPServer):
 
 '''
 assert source.count('mcp = MCPServer(') == 1, 'Review MCP registration: source changed'
-server.write_text(source.replace('mcp = MCPServer(', bridge + 'mcp = _CompiledMCPServer('))
+server.write_text(source.replace('mcp = MCPServer(', '\n_MCP_DESCRIPTIONS = ' + repr(descriptions) + '\n' + bridge + 'mcp = _CompiledMCPServer('))
 
 
 chat = Path('/build/app/api/mcp2/orion/llm_core/llm_bridge/chat_model.py')

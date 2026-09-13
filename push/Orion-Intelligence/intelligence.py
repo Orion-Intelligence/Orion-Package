@@ -51,8 +51,7 @@ def deployment(repo):
     web['environment'].update(PRODUCTION='1', TESTING_ENABLED='0', PYTHONPATH='/app',
                               APP_UID='${APP_UID:-1000}', APP_GID='${APP_GID:-1000}')
     web['volumes'] = [bind(SOURCE + suffix, target) for target, suffix in STORAGE.items()]
-    web['volumes'].extend([{'type': 'volume', 'source': 'bloom-data', 'target': '/app/bloom_data'},
-                           bind('${ORION_CRAWLER_LOGS:-${ORION_SOURCE_DIR}/../Orion-Crawler/app/logs}', '/app/crawler_logs', True)])
+    web['volumes'].append({'type': 'volume', 'source': 'bloom-data', 'target': '/app/bloom_data'})
     web['depends_on'] = {name: {'condition': 'service_healthy'} for name in ('elasticsearch', 'mongo', 'arangodb', 'redis_server')}
     cron = copy.deepcopy(web)
     cron.update(container_name='trusted-web-cron', command=['cron'], depends_on={'web': {'condition': 'service_healthy'}},
@@ -88,7 +87,7 @@ def deployment(repo):
 def ignored(_directory, names):
     return [name for name in names if name in {'.git', '__pycache__', 'node_modules', '.angular', '_build',
             'tests', 'venv', '.venv', 'logs', 'sessions', '.runtime'} or name.startswith('.env')
-            or name.endswith(('.pyc', '.pyo', '.pem', '.key', '.log', '.map'))]
+            or name.endswith(('.pyc', '.pyo', '.pem', '.key', '.log', '.map', '-source.zip'))]
 
 
 def build(repo, image):
@@ -134,6 +133,8 @@ def build(repo, image):
         for name in ('Dockerfile', 'prepare.py'):
             shutil.copy2(PACKAGE / name, context / name)
         shutil.copy2(PACKAGE_ROOT / '_shared/compile_backend.py', context / 'compile_backend.py')
+        shutil.copy2(PACKAGE_ROOT / '_shared/audit_release.py', context / 'audit_release.py')
+        shutil.copytree(PACKAGE_ROOT / '_shared/obfuscation', context / 'obfuscation')
         (context / 'nginx').mkdir()
         shutil.copy2(repo / 'nginx/nginx-prod.conf', context / 'nginx/nginx.conf')
         (context / 'nginx/docs.conf').write_text('events {}\nhttp { include /etc/nginx/mime.types; server { listen 80; root /usr/share/nginx/html; index index.html; } }\n')

@@ -16,3 +16,6 @@ manifest['scripts'] = {'social:post': 'node dist/publish/post.js',
 (automation / 'package.json').write_text(json.dumps(manifest))
 subprocess.run(['npm', 'prune', '--omit=dev', '--prefix', str(automation)], check=True)
 shutil.rmtree(automation / 'src')
+
+subprocess.run(['npm', 'ci', '--prefix', '/build/obfuscation', '--ignore-scripts', '--no-audit', '--no-fund'], check=True)
+subprocess.run(['node', '/build/obfuscation/obfuscate.cjs', str(automation / 'dist'), 'node'], check=True)

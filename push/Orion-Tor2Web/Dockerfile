@@ -1,3 +1,9 @@
+FROM node:24-alpine AS assets
+COPY --from=orion_obfuscation / /obfuscation/
+RUN npm ci --prefix /obfuscation --ignore-scripts --no-audit --no-fund
+COPY data/ /data/
+RUN node /obfuscation/obfuscate.cjs /data browser-no-eval
+
 FROM python:3.13-slim AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -13,7 +19,7 @@ COPY requirements/requirements-modern.txt /opt/tor2web/requirements.txt
 RUN pip install --no-cache-dir -r /opt/tor2web/requirements.txt
 
 FROM runtime AS compiler
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev shc binutils \
  && pip install --no-cache-dir Cython==3.3.0 setuptools==84.0.0
 WORKDIR /build
 COPY tor2web/ tor2web/
@@ -51,38 +57,13 @@ patch('/build/tor2web-entrypoint', 'exec python3 /opt/tor2web/tor2web/t2w.py',
 Options.docstrings = False
 modules = [str(path) for path in Path('tor2web').rglob('*.py')]
 setup(
-    ext_modules=cythonize(modules, compiler_directives={'language_level': 3, 'annotation_typing': False}),
+    ext_modules=cythonize(modules, compiler_directives={'language_level': 3, 'annotation_typing': False, 'embedsignature': False, 'emit_code_comments': False}),
     script_args=['build_ext', '--build-lib', '/compiled', '--parallel', '2'],
 )
 assert len(list(Path('/compiled').rglob('*.so'))) == len(modules), 'Incomplete compilation'
 PY
 
-FROM runtime AS release
-RUN apt-get update && apt-get install -y --no-install-recommends nginx \
- && rm -rf /var/lib/apt/lists/*
-ENV PYTHONPATH=/opt/tor2web PYTHONDONTWRITEBYTECODE=1 SOCKS_HOST=127.0.0.1 T2W_DEBUG=False
-COPY --from=compiler /compiled/tor2web/ /opt/tor2web/tor2web/
-COPY --from=compiler --chmod=755 /build/tor2web-entrypoint /usr/local/bin/tor2web-entrypoint
-COPY data/ /usr/share/tor2web/data/
-COPY LICENSE /usr/share/doc/tor2web/LICENSE
-COPY deploy/tor2web.conf.template /etc/tor2web.conf.template
-COPY deploy/torrc /etc/tor/torrc
-COPY --chmod=755 deploy/tor-healthcheck.sh /usr/local/bin/tor-healthcheck
-COPY deploy/nginx.conf.template /etc/nginx/tor2web.conf.template
-COPY <<'NGINX' /etc/nginx/nginx.conf
-user tor2web;
-worker_processes auto;
-pid /run/nginx.pid;
-error_log /dev/stderr warn;
-events { worker_connections 1024; }
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    access_log /dev/stdout;
-    include /etc/nginx/tor2web.conf;
-}
-NGINX
-COPY --chmod=755 <<'SH' /usr/local/bin/tor2web-stack
+COPY --chmod=755 <<'SH' /build/tor2web-stack
 #!/bin/bash
 set -eu
 export BASEHOST="${BASEHOST:-tor.orionintelligence.org}"
@@ -113,6 +94,42 @@ wait -n "${pids[@]}" || true
 printf 'A stack process exited; stopping the container.\n' >&2
 exit 1
 SH
+COPY deploy/tor-healthcheck.sh /build/tor-healthcheck
+RUN mkdir -p /build/bin \
+ && shc -r -f /build/tor2web-entrypoint -o /build/bin/tor2web-entrypoint \
+ && shc -r -f /build/tor-healthcheck -o /build/bin/tor-healthcheck \
+ && shc -r -f /build/tor2web-stack -o /build/bin/tor2web-stack \
+ && strip --strip-all /build/bin/*
+
+RUN python3 -c "from pathlib import Path; assert all(Path(p).read_bytes()[:4] == bytes([127,69,76,70]) for p in ['/build/bin/tor2web-entrypoint', '/build/bin/tor-healthcheck', '/build/bin/tor2web-stack'])"
+
+FROM runtime AS release
+RUN apt-get update && apt-get install -y --no-install-recommends nginx \
+ && rm -rf /var/lib/apt/lists/*
+ENV PYTHONPATH=/opt/tor2web PYTHONDONTWRITEBYTECODE=1 SOCKS_HOST=127.0.0.1 T2W_DEBUG=False
+COPY --from=compiler /compiled/tor2web/ /opt/tor2web/tor2web/
+COPY --from=compiler --chmod=755 /build/bin/tor2web-entrypoint /usr/local/bin/tor2web-entrypoint
+COPY --from=assets /data/ /usr/share/tor2web/data/
+COPY LICENSE /usr/share/doc/tor2web/LICENSE
+COPY --from=compiler /usr/share/doc/shc/copyright /usr/share/doc/tor2web/shc-copyright
+COPY deploy/tor2web.conf.template /etc/tor2web.conf.template
+COPY deploy/torrc /etc/tor/torrc
+COPY --from=compiler --chmod=755 /build/bin/tor-healthcheck /usr/local/bin/tor-healthcheck
+COPY deploy/nginx.conf.template /etc/nginx/tor2web.conf.template
+COPY <<'NGINX' /etc/nginx/nginx.conf
+user tor2web;
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /dev/stderr warn;
+events { worker_connections 1024; }
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    access_log /dev/stdout;
+    include /etc/nginx/tor2web.conf;
+}
+NGINX
+COPY --from=compiler --chmod=755 /build/bin/tor2web-stack /usr/local/bin/tor2web-stack
 RUN sed -i 's/^SocksPort 0.0.0.0:/SocksPort 127.0.0.1:/' /etc/tor/torrc \
  && sed -i 's/listen_ipv4 = 0.0.0.0/listen_ipv4 = 127.0.0.1/' /etc/tor2web.conf.template \
  && sed -i 's/listen 9080 ssl/listen 443 ssl/g; s/\$host:\$server_port/\$http_host/g' /etc/nginx/tor2web.conf.template \

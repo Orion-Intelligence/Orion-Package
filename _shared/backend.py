@@ -92,6 +92,9 @@ def build(configure, repo, image):
 
         shutil.copytree(repo / 'app', context / 'app', ignore=ignore)
         shutil.copy2(PACKAGE / 'compile_backend.py', context / 'compile_backend.py')
+        shutil.copy2(PACKAGE / 'audit_release.py', context / 'audit_release.py')
+        if configure.SLUG == 'social':
+            shutil.copytree(PACKAGE / 'obfuscation', context / 'obfuscation')
         prepare = Path(configure.__file__).parent / 'prepare.py'
         if prepare.is_file():
             shutil.copy2(prepare, context / 'prepare.py')
@@ -112,7 +115,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends {compiler_packa
  && pip install --no-cache-dir Cython==3.3.0 setuptools==84.0.0
 WORKDIR /build
 COPY app/ /build/app/
-COPY compile_backend.py /build/compile_backend.py
+COPY compile_backend.py audit_release.py /build/
 COPY prepare.py /build/prepare.py
 RUN python /build/compile_backend.py
 
@@ -125,6 +128,8 @@ EXPOSE {configure.PORT}
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \\
  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:{configure.PORT}/openapi.json', timeout=5).read()"
 '''
+        if configure.SLUG == 'social':
+            suffix = suffix.replace('COPY prepare.py /build/prepare.py', 'COPY prepare.py /build/prepare.py\nCOPY obfuscation/ /build/obfuscation/')
         suffix += getattr(configure, 'RELEASE', '')
         suffix += 'CMD ' + json.dumps(['uvicorn', configure.MODULE, '--host', '0.0.0.0', '--port', str(configure.PORT)]) + '\n'
         (context / 'Dockerfile').write_text(prefix + suffix)

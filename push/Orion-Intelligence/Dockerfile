@@ -4,8 +4,12 @@ ENV CYPRESS_INSTALL_BINARY=0 NG_CLI_ANALYTICS=false
 COPY client/package.json client/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY client/ ./
+COPY obfuscation/ /obfuscation/
+RUN npm ci --prefix /obfuscation --ignore-scripts --no-audit --no-fund
 RUN npx ng build --configuration production --source-map=false \
  && test -f build/index.html && test -f build/assets/data/map/world.json
+
+RUN node /obfuscation/obfuscate.cjs /client/build browser-no-eval
 
 FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS documentation
 WORKDIR /docs
@@ -17,6 +21,10 @@ ARG DOCUMENTATION_PROJECT_NAME=Platform
 ARG DOCUMENTATION_COMPANY_NAME="Platform Operator"
 RUN python replace_branding.py /site "$DOCUMENTATION_PROJECT_NAME" "$DOCUMENTATION_COMPANY_NAME"
 
+FROM client AS protected-documentation
+COPY --from=documentation /site/ /site/
+RUN node /obfuscation/obfuscate.cjs /site browser-no-eval
+
 FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93 AS dependencies
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir --prefix=/install -r /requirements.txt
@@ -25,7 +33,7 @@ FROM dependencies AS compiler
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
  && pip install --no-cache-dir Cython==3.3.0 setuptools==84.0.0
 COPY app/ /build/app/
-COPY compile_backend.py prepare.py /build/
+COPY compile_backend.py prepare.py audit_release.py /build/
 RUN python /build/compile_backend.py
 
 FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
@@ -41,7 +49,7 @@ COPY --from=dependencies /install/ /usr/local/
 COPY --from=compiler /release/ /app/
 COPY extension/ /app/workspace/extension/
 COPY --from=client /client/build/ /app/workspace/build/
-COPY --from=documentation /site/ /opt/orion/assets/docs/
+COPY --from=protected-documentation /site/ /opt/orion/assets/docs/
 COPY nginx/ /opt/orion/assets/nginx/
 COPY defaults/ /opt/orion/defaults/
 COPY api_docs/ /app/docs/api_docs/

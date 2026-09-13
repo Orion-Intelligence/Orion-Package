@@ -3,6 +3,7 @@ export SLUG=mail
 
 push() {
     python3 -B "$REPO_PACKAGE_DIR/mail.py" build "$REPO_SOURCE_DIR" "$IMAGE" || return $?
+    python3 -B "$PACKAGE_DIR/_shared/audit_image.py" "$IMAGE" "$SLUG" || return $?
     docker push "$IMAGE"
 }
 

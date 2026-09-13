@@ -1,7 +1,8 @@
 export SLUG=tor2web
 
 push() {
-    docker build --file "$REPO_PACKAGE_DIR/Dockerfile" --tag "$IMAGE" "$REPO_SOURCE_DIR" || return $?
+    docker build --build-context "orion_obfuscation=$PACKAGE_DIR/_shared/obfuscation" --file "$REPO_PACKAGE_DIR/Dockerfile" --tag "$IMAGE" "$REPO_SOURCE_DIR" || return $?
+    python3 -B "$PACKAGE_DIR/_shared/audit_image.py" "$IMAGE" "$SLUG" || return $?
     docker push "$IMAGE" || return $?
 }
 

@@ -15,6 +15,8 @@ Use `./push.sh` to build and publish, or `./pull.sh` to deploy published images.
 - **Configuration:** `pull/<repo>/env` supplies defaults; pull creates `.env`, generates supported secrets, and preserves existing values. Fill remaining `{value}` entries manually. Never commit secrets or replace existing database/encryption credentials.
 - **Cloudflare:** supply a token scoped to `orionintelligence.org` with **DNS: Edit**, **Zone: Read**, and **Zone Settings: Read** (Edit to change SSL mode). Find the **Zone ID** under the domain’s **Overview → API**. Select project-menu **option 3** explicitly to enable DNS/certificate setup for this run; ordinary pull never enables it automatically. The token and Zone ID are not saved. Rerun option 3 before certificates expire; unattended DNS renewal is not configured. Mail PTR/TCP 25 require VPS-provider configuration.
 
+Application code is Cython-compiled with stripped debug/docstring metadata; frontend/Social bundles are obfuscated without source maps, and Mail/Tor entrypoints are encoded binaries. This deters inspection, not extraction: runtime configuration, model files, third-party dependencies, and signed extensions remain readable/recoverable. Rebuild images to apply changes.
+
 **Controls:** arrows to navigate, Space to select, Enter to confirm, q/Esc to cancel. Any failure stops the remaining modules; fix it and rerun.
 
 ---
@@ -43,7 +45,7 @@ The remaining sections describe the Orion platform and its source-development wo
   <a href="https://uptime.orionintelligence.org/status/orion-intelligence" title="View Orion service health"><img src="docs/_static/readme-status.svg" alt="View Orion live service health" width="232" height="38"></a>
 </p>
 
-Orion Platform is a comprehensive, web-based solution that combines the functionality of a browser, search engine, crawler, and data aggregation tools to empower OSINT (Open Source Intelligence) experts. Built on top of Docker, Orion provides a user-friendly interface to explore, search, and visualize data extracted by its powerful Orion Crawler.
+Orion Platform is a comprehensive, web-based solution that combines the functionality of a browser, search engine, crawler, and data aggregation tools to empower OSINT (Open Source Intelligence) experts. Built on top of Docker, Orion provides a user-friendly interface to explore, search, and visualize collected data.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/4266afc8-1d52-41ac-a2fe-b445e1b6b848" alt="CYBERATTACK HITS FRENCH INTERIOR(3)" width="1200">
@@ -310,11 +312,6 @@ Orion follows a clear path from source collection to analyst action:
       <td valign="top"><a href="https://github.com/Orion-Intelligence/Orion-Dark-Nexus"><strong>Orion Dark Nexus</strong></a><br><sub>ECOSYSTEM SERVICE</sub></td>
       <td valign="top"><sub>AI-assisted investigation, chat orchestration, tool integration, and secure workspace management.</sub></td>
       <td valign="top"><img src="https://img.shields.io/badge/-Python-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python"> <img src="https://img.shields.io/badge/-FastAPI-009688?style=flat-square&amp;logo=fastapi&amp;logoColor=white" alt="FastAPI"> <img src="https://img.shields.io/badge/-LangGraph-1C3C3C?style=flat-square&amp;logo=langchain&amp;logoColor=white" alt="LangGraph"> <img src="https://img.shields.io/badge/-MCP-5A45FF?style=flat-square" alt="Model Context Protocol"> <img src="https://img.shields.io/badge/-Ollama-000000?style=flat-square&amp;logo=ollama&amp;logoColor=white" alt="Ollama"></td>
-    </tr>
-    <tr>
-      <td valign="top"><a href="https://github.com/Orion-Intelligence/Orion-Crawler"><strong>Orion Crawler</strong></a><br><sub>ECOSYSTEM SERVICE</sub></td>
-      <td valign="top"><sub>Scheduled crawling across hidden-web and monitored sources, with distributed task execution and private-network routing.</sub></td>
-      <td valign="top"><img src="https://img.shields.io/badge/-Python-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python"> <img src="https://img.shields.io/badge/-Celery-37814A?style=flat-square&amp;logo=celery&amp;logoColor=white" alt="Celery"> <img src="https://img.shields.io/badge/-Playwright-2EAD33?style=flat-square&amp;logo=playwright&amp;logoColor=white" alt="Playwright"> <img src="https://img.shields.io/badge/-Redis-DC382D?style=flat-square&amp;logo=redis&amp;logoColor=white" alt="Redis"> <img src="https://img.shields.io/badge/-Tor-7D4698?style=flat-square&amp;logo=torproject&amp;logoColor=white" alt="Tor"></td>
     </tr>
   </tbody>
 </table>

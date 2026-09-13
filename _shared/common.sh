@@ -5,13 +5,14 @@ ORION_BASE_DIR="${ORION_BASE_DIR:-$(cd -- "$PACKAGE_DIR/.." && pwd)}"
 ORION_IMAGE_NAMESPACE="${ORION_IMAGE_NAMESPACE:-msmannan00}"
 ORION_IMAGE_TAG="${ORION_IMAGE_TAG:-latest}"
 REPOSITORIES=(Orion-Intelligence Orion-Micros Orion-Social Orion-Dark-Nexus
-    Orion-mail Orion-Tor2Web Orion-Crawler Orion-Sandbox Orion-Storage)
-SELECTED=(0 0 0 0 0 0 0 0 0)
+    Orion-mail Orion-Tor2Web Orion-Sandbox Orion-Storage)
+SELECTED=(0 0 0 0 0 0 0 0)
 
 pending() { printf '%s: %s not implemented yet.\n' "$1" "$ACTION" >&2; return 1; }
 
 push_backend() {
     python3 -B "$PACKAGE_DIR/_shared/backend.py" build "$REPO_PACKAGE_DIR" "$REPO_SOURCE_DIR" "$IMAGE" || return $?
+    python3 -B "$PACKAGE_DIR/_shared/audit_image.py" "$IMAGE" "$SLUG" || return $?
     docker push "$IMAGE" || return $?
 }
 

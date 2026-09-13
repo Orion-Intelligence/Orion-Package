@@ -3,7 +3,9 @@ from pathlib import Path
 import runpy
 import shutil
 
+from Cython.Compiler import Options
 from Cython.Build import cythonize
+from audit_release import audit
 from setuptools import Extension, setup
 
 root = Path('/build/app')
@@ -11,12 +13,13 @@ os.chdir(root)
 
 runpy.run_path('/build/prepare.py')
 
+Options.docstrings = False
 modules = sorted(root.rglob('*.py'))
 extensions = [Extension('.'.join(p.relative_to(root).with_suffix('').parts), [str(p)],
-                        extra_compile_args=['-O2', '-g0', '-fvisibility=hidden'], extra_link_args=['-s'])
+                        extra_compile_args=['-O2', '-g0', '-fvisibility=hidden', '-ffile-prefix-map=/build=.'], extra_link_args=['-s'])
               for p in modules]
 setup(name='orion-compiled', ext_modules=cythonize(
-    extensions, compiler_directives={'language_level': 3, 'annotation_typing': False, 'binding': True}),
+    extensions, compiler_directives={'language_level': 3, 'annotation_typing': False, 'binding': True, 'embedsignature': False, 'emit_code_comments': False}),
     script_args=['build_ext', '--build-lib', '/release', '--parallel', '2'])
 assert len(list(Path('/release').rglob('*.so'))) == len(modules), 'Incomplete compilation'
 
@@ -30,3 +33,5 @@ for path in root.rglob('*'):
     target = Path('/release') / relative
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(path, target)
+
+audit('/release')
