@@ -13,7 +13,7 @@ from urllib.parse import quote
 AUTO = '{value_auto}'
 MANUAL = '{value}'
 MODULES = ('Orion-Intelligence', 'Orion-Micros', 'Orion-Social',
-           'Orion-Dark-Nexus', 'Orion-mail', 'Orion-Tor2Web')
+           'Orion-Dark-Nexus', 'Orion-mail')
 SHARED = {
     'S_SUPER_PASSWORD_V1': ('Orion-Intelligence', 'Orion-Micros', 'Orion-Social'),
     'ORION_SOCIAL_INTERNAL_TOKEN': ('Orion-Intelligence', 'Orion-Social'),
@@ -30,7 +30,6 @@ AUTOMATIC = {
     'Orion-Dark-Nexus': {'ENCRYPTION_KEY', 'MONGO_ROOT_PASSWORD', 'NEXUS_PASSWORD'},
     'Orion-mail': {'ENCRYPTION_KEY', 'MONGO_ROOT_PASSWORD', 'MONGODB_URL',
                    'ORION_MAIL_SSO_CLIENT_SECRET', 'INCOMING_MAIL_TOKEN', 'RSPAMD_CONTROLLER_PASSWORD'},
-    'Orion-Tor2Web': set(),
 }
 ASSIGNMENT = re.compile(r'^(\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*)(.*)$')
 VALUE = re.compile(r'''^('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[^'"].*?|)(\s+\#.*)?$''')

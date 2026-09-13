@@ -177,8 +177,6 @@ def desired_records(document):
     domains = env.domains(document)
     if module == 'Orion-Intelligence':
         return [address(document, domains[0], True)]
-    if module == 'Orion-Tor2Web':
-        return [address(document, domains[0], False), address(document, '*.onion.' + domains[0], False)]
     mail = domains[0]
     smtp = env.hostname(env.get(document, 'SMTP_HOSTNAME'))
     if smtp == mail:

@@ -14,6 +14,7 @@ function files(root) {
 
 function protect(root, target = 'browser-no-eval') {
   root = path.resolve(root);
+  const browser = target === 'browser-no-eval';
   const entries = files(root);
   if (entries.some(file => /\.(?:tsx?|py|pyc)$/.test(file))) throw new Error('Source files remain in JavaScript release assets');
   const integrity = new Map();
@@ -27,7 +28,7 @@ function protect(root, target = 'browser-no-eval') {
       renameGlobals: false, renameProperties: false, transformObjectKeys: false,
       controlFlowFlattening: false, deadCodeInjection: false,
       debugProtection: false, selfDefending: false, disableConsoleOutput: false,
-      stringArray: true, stringArrayEncoding: ['base64'], stringArrayThreshold: 1,
+      stringArray: !browser, stringArrayEncoding: browser ? [] : ['base64'], stringArrayThreshold: browser ? 0 : 1,
       stringArrayCallsTransform: false, splitStrings: false,
     }).getObfuscatedCode();
     const licenses = original.match(/\/\*[!*][\s\S]*?\*\//g) || [];

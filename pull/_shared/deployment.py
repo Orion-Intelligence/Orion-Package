@@ -70,8 +70,6 @@ def values(module, data):
                       ALLOWED_HOSTS=mail + ',localhost,127.0.0.1,orion-mail-web',
                       ORION_MAIL_CERT_DIR='/etc/letsencrypt/live/' + project + '-edge',
                       LETSENCRYPT_EMAIL='msmannan00@gmail.com')
-    elif module == 'Orion-Tor2Web':
-        result.update(BASEHOST=project + 'tor.orionintelligence.org', LETSENCRYPT_CERT_NAME=project + '-tor')
     return result
 
 
@@ -112,7 +110,7 @@ def menu(selected_modules=None):
             print(f"Project: {data['project_name']} | VPS IP: {data['server_ip']}")
             print('Application: https://' + data['project_name'] + '.orionintelligence.org')
             print('Mail: https://' + data['project_name'] + 'mail.orionintelligence.org')
-            public_selected = not selected_modules or any(module in {'Orion-Intelligence', 'Orion-mail', 'Orion-Tor2Web'} for module in selected_modules)
+            public_selected = not selected_modules or any(module in {'Orion-Intelligence', 'Orion-mail'} for module in selected_modules)
             options = ['Pull', 'Edit project/IP']
             if public_selected:
                 options.append('Cloudflare setup')

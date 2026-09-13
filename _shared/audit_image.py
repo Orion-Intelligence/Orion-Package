@@ -13,7 +13,6 @@ roots = {
     'micros': ('/app',),
     'social': ('/app',),
     'dark-nexus': ('/app',),
-    'tor2web': ('/opt/tor2web', '/usr/share/tor2web/data'),
 }[module]
 source = {'.py', '.pyc', '.pyo', '.pyx', '.pxd', '.pyi', '.c', '.h', '.o', '.ts', '.tsx', '.jsx',
           '.sh', '.bash', '.zsh', '.ipynb', '.vue', '.svelte', '.coffee'}
@@ -35,7 +34,6 @@ if leaked:
     raise SystemExit('Unprotected application files in final image: ' + ', '.join(leaked[:20]))
 executables = {
     'mail': ('/usr/local/bin/mail-entrypoint', '/usr/local/bin/mail-incoming', '/usr/local/bin/postfix-entrypoint.sh'),
-    'tor2web': ('/usr/local/bin/tor2web-entrypoint', '/usr/local/bin/tor-healthcheck', '/usr/local/bin/tor2web-stack'),
 }.get(module, ())
 for name in executables:
     if Path(name).read_bytes()[:4] != b'\x7fELF':
@@ -48,7 +46,7 @@ def main():
     if len(sys.argv) != 3:
         raise ValueError('Usage: audit_image.py IMAGE MODULE')
     image, module = sys.argv[1:]
-    if module not in {'intelligence', 'mail', 'micros', 'social', 'dark-nexus', 'tor2web'}:
+    if module not in {'intelligence', 'mail', 'micros', 'social', 'dark-nexus'}:
         raise ValueError('Unknown image profile')
     subprocess.run(['docker', 'run', '--rm', '--network', 'none', '--entrypoint', 'python3',
                     image, '-c', AUDIT, module], check=True)

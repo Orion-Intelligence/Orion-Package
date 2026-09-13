@@ -14,7 +14,3 @@ if [ "$actual" = 'orion-mail:true' ]; then
     docker exec --user 0 orion-mail-postfix /usr/local/bin/mail-entrypoint certs
     docker exec --user 0 orion-mail-postfix postfix reload
 fi
-containers="$(docker ps --filter label=com.docker.compose.project=orion-package --filter label=com.docker.compose.service=tor2web --format '{{.ID}}')"
-for container in $containers; do
-    reload_nginx "$container" orion-package
-done

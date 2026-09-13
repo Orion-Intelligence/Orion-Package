@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from env_filler import Environment, MODULES, pending, save, encode
 
 ROOT = Path(__file__).resolve().parents[1]
-PUBLIC = {'Orion-Intelligence', 'Orion-mail', 'Orion-Tor2Web'}
+PUBLIC = {'Orion-Intelligence', 'Orion-mail'}
 
 
 class MenuBack(Exception):
@@ -121,8 +121,6 @@ def domains(document) -> tuple[str, ...]:
         return host, base, mail
     if module == 'Orion-mail':
         return (hostname(get(document, 'MAIL_DOMAIN')),)
-    if module == 'Orion-Tor2Web':
-        return (hostname(get(document, 'BASEHOST')),)
     return ()
 
 
@@ -149,8 +147,6 @@ def edit_domains(path):
                   'ORION_MAIL_PUBLIC_URLS': 'https://' + host, 'CORS_ALLOWED_ORIGINS': 'https://' + host,
                   'ALLOWED_HOSTS': host + ',localhost,127.0.0.1,orion-mail-web'}
         print('Configure this hostname in the shared Intelligence edge and its SSO redirect allowlist too.')
-    else:
-        values = {'BASEHOST': hostname(ask('Tor2Web base hostname (tor.example.org)'))}
     update(path, values)
 
 
@@ -190,10 +186,6 @@ def certificate_spec(document):
             raise ValueError('ORION_MAIL_CERT_DIR must be /etc/letsencrypt/live/<certificate-name> inside the container')
         name = cert.removeprefix('/etc/letsencrypt/live/')
         hosts = tuple(dict.fromkeys((*names, hostname(get(document, 'SMTP_HOSTNAME', names[0])))))
-    else:
-        directory = get(document, 'LETSENCRYPT_DIR', '/etc/letsencrypt')
-        name = get(document, 'LETSENCRYPT_CERT_NAME', 'onion-tor-orionintelligence-org')
-        hosts = (names[0], '*.onion.' + names[0])
     if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', name) or not Path(directory).is_absolute():
         raise ValueError('Use an absolute Let’s Encrypt directory and a plain certificate name')
     return Path(directory), name, hosts

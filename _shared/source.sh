@@ -16,7 +16,7 @@ source_git() {
 if [[ ! -e "$repository" && ! -L "$repository" ]]; then
     name="$(basename "$repository")"
     case "$name" in
-        Orion-Intelligence|Orion-Micros|Orion-Social|Orion-Dark-Nexus|Orion-mail|Orion-Tor2Web) ;;
+        Orion-Intelligence|Orion-Micros|Orion-Social|Orion-Dark-Nexus|Orion-mail) ;;
         *) printf 'Unknown source repository: %s\n' "$name" >&2; exit 1 ;;
     esac
     origin="https://github.com/Orion-Intelligence/$name.git"

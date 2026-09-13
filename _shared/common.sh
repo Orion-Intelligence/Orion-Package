@@ -4,9 +4,8 @@ PACKAGE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ORION_BASE_DIR="${ORION_BASE_DIR:-$(cd -- "$PACKAGE_DIR/.." && pwd)}"
 ORION_IMAGE_NAMESPACE="${ORION_IMAGE_NAMESPACE:-msmannan00}"
 ORION_IMAGE_TAG="${ORION_IMAGE_TAG:-latest}"
-REPOSITORIES=(Orion-Intelligence Orion-Micros Orion-Social Orion-Dark-Nexus
-    Orion-mail Orion-Tor2Web Orion-Sandbox Orion-Storage)
-SELECTED=(0 0 0 0 0 0 0 0)
+REPOSITORIES=(Orion-Intelligence Orion-Micros Orion-Social Orion-Dark-Nexus Orion-mail)
+SELECTED=(0 0 0 0 0)
 
 pending() { printf '%s: %s not implemented yet.\n' "$1" "$ACTION" >&2; return 1; }
 
@@ -36,7 +35,7 @@ pull_backend() {
 stop_managed_projects() {
     local project
     local -a ids=()
-    for project in trusted-search trusted-micros trusted-social orion-model-gateway orion-mail orion-package; do
+    for project in trusted-search trusted-micros trusted-social orion-model-gateway orion-mail; do
         mapfile -t ids < <(docker ps --filter "label=com.docker.compose.project=$project" --format '{{.ID}}')
         if ((${#ids[@]})); then
             printf 'Stopping Orion Docker project: %s\n' "$project"
@@ -87,7 +86,7 @@ choose_repositories() {
             printf '  [%s] %-24s\033[0m\n' "$checked" "$label"
         done
         printf '\nSelected: %s/%s | %s:<%s>\n' "$count" "$total" "$ORION_IMAGE_NAMESPACE" "$ORION_IMAGE_TAG"
-        printf 'Ready: Intelligence, Tor2Web, Micros, Social, Dark Nexus, Mail. Other handlers are pending.\n'
+        printf 'Ready: Intelligence, Micros, Social, Dark Nexus, Mail.\n'
         IFS= read -rsn1 key || exit 130
         if [[ "$key" == $'\033' ]]; then
             suffix=''
