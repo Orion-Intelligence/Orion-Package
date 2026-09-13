@@ -23,16 +23,27 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
 
-def service_diagnostics(configure, config):
-    for service in getattr(configure, 'RECOVERABLE_SERVICES', {}):
+def service_diagnostics(config, names=None):
+    selected = names or tuple(config['services'])
+    found = False
+    for service in selected:
         container = config['services'][service].get('container_name')
         if not container:
             continue
-        print(f'{service}: container status and recent logs', file=sys.stderr)
-        subprocess.run(('docker', 'inspect', '--format',
-                        'Image={{.Config.Image}} Memory={{.HostConfig.Memory}} Status={{.State.Status}} OOMKilled={{.State.OOMKilled}} Restarts={{.RestartCount}} Health={{if .State.Health}}{{.State.Health.Status}}{{end}}',
-                        container), check=False)
+        inspected = subprocess.run(('docker', 'inspect', '--format', '{{json .State}}', container),
+                                   capture_output=True, text=True, check=False)
+        if inspected.returncode:
+            continue
+        state = json.loads(inspected.stdout)
+        health = state.get('Health', {}).get('Status', '')
+        if names is None and state.get('Status') == 'running' and health in ('', 'healthy'):
+            continue
+        found = True
+        print(f'{service}: status={state.get("Status")} health={health or "none"} '
+              f'oom_killed={state.get("OOMKilled", False)} error={state.get("Error") or "none"}', file=sys.stderr)
         subprocess.run(('docker', 'logs', '--tail', '150', container), check=False)
+    if not found:
+        print('No failed container was found; Docker daemon events may contain the failure.', file=sys.stderr)
 
 
 def prepare_recoverable_services(configure, config, command, env):
@@ -45,7 +56,7 @@ def prepare_recoverable_services(configure, config, command, env):
         run(*start, env=env)
         return
     except subprocess.CalledProcessError:
-        service_diagnostics(configure, config)
+        service_diagnostics(config, services)
     print('ClamAV did not become healthy; rebuilding its disposable signature cache and retrying.', file=sys.stderr)
     for service, volumes in recoverable.items():
         subprocess.run((*command, 'rm', '--stop', '--force', service), env=env, check=False)
@@ -55,7 +66,7 @@ def prepare_recoverable_services(configure, config, command, env):
         run(*command, 'up', '--detach', '--no-build', '--force-recreate', '--wait',
             '--wait-timeout', '720', *services, env=env)
     except subprocess.CalledProcessError:
-        service_diagnostics(configure, config)
+        service_diagnostics(config, services)
         raise
 
 
@@ -201,10 +212,17 @@ def pull(configure, env_file, image):
         run(*command, 'config', '--quiet', env=env)
         run(*command, 'pull', env=env)
         prepare_recoverable_services(configure, config, command, env)
+        recreate = getattr(configure, 'RECREATE_SERVICES', ())
+        if recreate:
+            try:
+                run(*command, 'up', '--detach', '--no-build', '--force-recreate', *recreate, env=env)
+            except subprocess.CalledProcessError:
+                service_diagnostics(config, recreate)
+                raise
         try:
             run(*command, 'up', '--detach', '--no-build', '--wait', '--wait-timeout', '900', env=env)
         except subprocess.CalledProcessError:
-            service_diagnostics(configure, config)
+            service_diagnostics(config)
             raise
 
 
