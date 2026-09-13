@@ -33,6 +33,18 @@ pull_backend() {
     python3 -B "$PACKAGE_DIR/_shared/backend.py" pull "$REPO_PACKAGE_DIR" "$ENV_FILE" "$IMAGE"
 }
 
+stop_managed_projects() {
+    local project
+    local -a ids=()
+    for project in trusted-search trusted-micros trusted-social orion-model-gateway orion-mail orion-package; do
+        mapfile -t ids < <(docker ps --filter "label=com.docker.compose.project=$project" --format '{{.ID}}')
+        if ((${#ids[@]})); then
+            printf 'Stopping Orion Docker project: %s\n' "$project"
+            docker stop "${ids[@]}" || return $?
+        fi
+    done
+}
+
 dispatch() (
     REPO_PACKAGE_DIR="$PACKAGE_DIR/push/$1"
     REPO_SOURCE_DIR="$ORION_BASE_DIR/$1"
@@ -115,7 +127,10 @@ main() {
 }
 
 run_selected() {
-    if [[ "$ACTION" == pull ]]; then python3 -B "$PACKAGE_DIR/pull/_shared/deployment.py" --modules "$@" || return $?; fi
+    if [[ "$ACTION" == pull ]]; then
+        stop_managed_projects || return $?
+        python3 -B "$PACKAGE_DIR/pull/_shared/deployment.py" --modules "$@" || return $?
+    fi
     local repository logged_in=0 status
     for repository in "$@"; do
         printf '\n%s: %s\n' "$ACTION" "$repository"
@@ -131,7 +146,11 @@ run_selected() {
             :
         else
             status=$?
-            printf '%s %s failed (exit %s). Stopping; see the error above. Existing services are not automatically removed.\n' "$ACTION" "$repository" "$status" >&2
+            if [[ "$ACTION" == pull ]]; then
+                printf '%s %s failed (exit %s). Stopping; see the error above. Managed Orion projects were stopped before this pull.\n' "$ACTION" "$repository" "$status" >&2
+            else
+                printf '%s %s failed (exit %s). Stopping; see the error above. Existing services are not automatically removed.\n' "$ACTION" "$repository" "$status" >&2
+            fi
             return "$status"
         fi
     done

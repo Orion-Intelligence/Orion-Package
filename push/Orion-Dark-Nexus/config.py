@@ -1,7 +1,4 @@
-import ast
 from pathlib import Path
-import shutil
-import sys
 
 SLUG = 'dark-nexus'
 PORT = 8030
@@ -28,22 +25,36 @@ def ignore(directory, names, default):
 
 def configure_runtime(config):
     services = config['services']
-    services.pop('sandbox_manager', None)
-    services.pop('mcp', None)
-    for name in ('api',):
-        if name not in services:
-            continue
-        service = services[name]
-        service.setdefault('environment', {}).pop('SANDBOX_MANAGER_URL', None)
-        service.setdefault('depends_on', {}).pop('sandbox_manager', None)
-        networks = service.get('networks', {})
-        if isinstance(networks, dict):
-            networks.pop('sandbox_api', None)
-        else:
-            service['networks'] = [network for network in networks
-                                   if network != 'sandbox_api']
-    config.get('networks', {}).pop('sandbox_api', None)
-    config.get('networks', {}).pop('sandbox_egress', None)
+    for name in tuple(services):
+        if name not in {'api', 'mongo'}:
+            services.pop(name)
+    api = services['api']
+    api['runtime'] = 'runc'
+    api['command'] = ['uvicorn', 'api.fastapi_app.app:create_fastapi_app', '--factory',
+                      '--host', '0.0.0.0', '--port', '8030']
+    api.setdefault('environment', {}).update({
+        'AI_PRODUCTION': '0',
+        'GPU_ENABLED': 'false',
+        'NVIDIA_VISIBLE_DEVICES': 'void',
+        'LLM_URL': 'http://127.0.0.1:1',
+        'LLM_CHAT_URL': 'http://127.0.0.1:1',
+        'OLLAMA_BASE_URL': 'http://127.0.0.1:1',
+        'DEFAULT_MODEL': 'disabled',
+        'OPENAI_API_KEY': '',
+        'OPENROUTER_API_KEY': '',
+        'LIVE_LLM_API_KEY': '',
+        'SANDBOX_MANAGER_URL': 'http://127.0.0.1:1',
+    })
+    api.setdefault('depends_on', {}).pop('sandbox_manager', None)
+    networks = api.get('networks', {})
+    if isinstance(networks, dict):
+        networks.pop('sandbox_api', None)
+    else:
+        api['networks'] = [network for network in networks
+                           if network != 'sandbox_api']
+    for name in ('model_egress', 'sandbox_api', 'sandbox_egress'):
+        config.get('networks', {}).pop(name, None)
+    config.get('volumes', {}).pop('model_engine_data', None)
 
 
 def configure(config):
@@ -52,20 +63,3 @@ def configure(config):
 
 def configure_pull(config):
     configure_runtime(config)
-
-
-def prepare(context, repo, ignored, run):
-    manager = context / 'app/api/shared_services/model_manager.py'
-    manifest = manager.with_name('topic_classifier.sha256')
-    source_manifest = repo / 'app/api/shared_services/topic_classifier.sha256'
-    if source_manifest.is_symlink():
-        raise ValueError('Refusing unsafe topic-classifier manifest symlink')
-    if not source_manifest.exists():
-        pins = [node.value.value for node in ast.parse(manager.read_text()).body
-                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
-                and any(isinstance(target, ast.Name) and target.id == 'ARCHIVE_SHA256' for target in node.targets)]
-        if pins != ['b12a93e816327ab5941b24ae34d39ce2d1d56c43bfad19b1fee786eb365d21f0']:
-            raise ValueError('Model archive pin changed; review the packaged checksum manifest before building')
-        shutil.copy2(Path(__file__).with_name('topic_classifier.sha256'), manifest)
-    run(sys.executable, '-B', str(manager),
-        '--destination', str(context / 'app/raw/validators/topic_classifier'))

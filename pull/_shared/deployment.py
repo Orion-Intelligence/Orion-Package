@@ -68,7 +68,8 @@ def values(module, data):
         result.update(MAIL_DOMAIN=mail, SMTP_HOSTNAME=project + 'smtp.orionintelligence.org', ORION_INTELLIGENCE_PUBLIC_URL='https://' + app,
                       ORION_MAIL_PUBLIC_URLS='https://' + mail, CORS_ALLOWED_ORIGINS='https://' + mail,
                       ALLOWED_HOSTS=mail + ',localhost,127.0.0.1,orion-mail-web',
-                      ORION_MAIL_CERT_DIR='/etc/letsencrypt/live/' + project + '-edge')
+                      ORION_MAIL_CERT_DIR='/etc/letsencrypt/live/' + project + '-edge',
+                      LETSENCRYPT_EMAIL='msmannan00@gmail.com')
     elif module == 'Orion-Tor2Web':
         result.update(BASEHOST=project + 'tor.orionintelligence.org', LETSENCRYPT_CERT_NAME=project + '-tor')
     return result

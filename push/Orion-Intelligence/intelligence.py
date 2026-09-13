@@ -39,6 +39,16 @@ def bind(source, target, read_only=False):
             'bind': {'create_host_path': False}}
 
 
+def configure_elasticsearch(config):
+    service = config['services']['elasticsearch']
+    service['mem_limit'] = '6g'
+    service['memswap_limit'] = '6g'
+    service.setdefault('environment', {}).update({
+        'ES_JAVA_OPTS': '-Xms4g -Xmx4g',
+        'indices.memory.index_buffer_size': '10%',
+    })
+
+
 def deployment(repo):
     raw = run('docker', 'compose', '--env-file', '/dev/null', '--file', str(repo / 'docker-compose-production.yml'),
               'config', '--no-interpolate', '--no-env-resolution', '--no-path-resolution',
@@ -50,6 +60,7 @@ def deployment(repo):
             if not value.get('external'):
                 value.pop('name', None)
     services = config['services']
+    configure_elasticsearch(config)
     web = services['web']
     web.pop('build')
     web.update(image=IMAGE, command=['web'], user='${APP_UID:-1000}:${APP_GID:-1000}')
@@ -266,6 +277,7 @@ def pull(env_file, image):
     config = json.loads(manifest)
     if config.get('name') != PROJECT or any(config['services'][name]['image'] != IMAGE for name in ('web', 'cron')):
         raise ValueError('Unexpected Intelligence deployment manifest')
+    configure_elasticsearch(config)
     nginx_service = config['services']['nginx']
     web_service = config['services']['web']
     web_service['healthcheck']['test'] = ['CMD-SHELL', 'host="$${APP_URL#https://}"; host="$${host%%/*}"; '
@@ -341,6 +353,8 @@ def pull(env_file, image):
             subprocess.run([*command, 'ps', '--all'], env=environment)
             subprocess.run(['docker', 'inspect', '--format', '{{json .State.Health}}', 'trusted-web-main'], env=environment)
             subprocess.run(['docker', 'logs', '--tail', '200', 'trusted-web-main'], env=environment)
+            subprocess.run(['docker', 'inspect', '--format', '{{json .State}}', 'trusted-web-elastic'], env=environment)
+            subprocess.run(['docker', 'logs', '--tail', '150', 'trusted-web-elastic'], env=environment)
             subprocess.run(['docker', 'logs', '--tail', '100', 'trusted-web-nginx'], env=environment)
             raise
         runtime.mkdir(parents=True, exist_ok=True)
