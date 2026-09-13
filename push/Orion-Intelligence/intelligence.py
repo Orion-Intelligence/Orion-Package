@@ -56,6 +56,8 @@ def deployment(repo):
     web['env_file'] = ['${ORION_ENV_FILE:?Set the Intelligence env file}']
     web['environment'].update(PRODUCTION='1', TESTING_ENABLED='0', PYTHONPATH='/app',
                               APP_UID='${APP_UID:-1000}', APP_GID='${APP_GID:-1000}')
+    web['healthcheck']['test'] = ['CMD-SHELL', 'host="$${APP_URL#https://}"; host="$${host%%/*}"; '
+                                  'curl --fail --silent --header "Host: $$host" http://127.0.0.1:8070/api/public > /dev/null']
     web['volumes'] = [bind(SOURCE + suffix, target) for target, suffix in STORAGE.items()]
     web['volumes'].append({'type': 'volume', 'source': 'bloom-data', 'target': '/app/bloom_data'})
     web['depends_on'] = {name: {'condition': 'service_healthy'} for name in ('elasticsearch', 'mongo', 'arangodb', 'redis_server')}
@@ -262,6 +264,9 @@ def pull(env_file, image):
     if config.get('name') != PROJECT or any(config['services'][name]['image'] != IMAGE for name in ('web', 'cron')):
         raise ValueError('Unexpected Intelligence deployment manifest')
     nginx_service = config['services']['nginx']
+    web_service = config['services']['web']
+    web_service['healthcheck']['test'] = ['CMD-SHELL', 'host="$${APP_URL#https://}"; host="$${host%%/*}"; '
+                                          'curl --fail --silent --header "Host: $$host" http://127.0.0.1:8070/api/public > /dev/null']
     nginx_service['depends_on'] = {name: {'condition': 'service_started'} for name in ('web', 'documentation')}
     nginx_service['healthcheck']['test'] = ['CMD', 'nginx', '-t']
     for volume in nginx_service['volumes']:

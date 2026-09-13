@@ -61,6 +61,6 @@ WORKDIR /app
 USER 1000:1000
 EXPOSE 8070
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
-    CMD curl --fail --silent http://127.0.0.1:8070/api/public > /dev/null
+    CMD host="${APP_URL#https://}"; host="${host%%/*}"; curl --fail --silent --header "Host: ${host}" http://127.0.0.1:8070/api/public > /dev/null
 ENTRYPOINT ["/usr/bin/tini", "--", "python3", "-c", "from package_runtime import main; main()"]
 CMD ["web"]
