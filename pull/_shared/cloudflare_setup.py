@@ -198,6 +198,14 @@ def desired_records(document):
             {'type': 'TXT', 'name': '_dmarc.' + mail, 'content': 'v=DMARC1; p=none', 'ttl': 1}]
 
 
+def certificate_names(hosts):
+    names = tuple(sorted(set(hosts)))
+    wildcards = tuple(name[2:] for name in names if name.startswith('*.'))
+    return tuple(name for name in names if name.startswith('*.') or not any(
+        name.endswith('.' + base) and name.removesuffix('.' + base) and
+        '.' not in name.removesuffix('.' + base) for base in wildcards))
+
+
 def certificates(document, config):
     directory, name, hosts = env.certificate_spec(document)
     if directory != Path('/etc/letsencrypt'):
@@ -225,7 +233,7 @@ def certificates(document, config):
                                '-noout', '-ext', 'subjectAltName', privileged=True)
     except ValueError:
         previous = ''
-    hosts = tuple(sorted(set(hosts) | set(re.findall(r'DNS:([a-zA-Z0-9*.-]+)', previous))))
+    hosts = certificate_names(set(hosts) | set(re.findall(r'DNS:([a-zA-Z0-9*.-]+)', previous)))
     if any(not host.removeprefix('*.').endswith('.orionintelligence.org') and host.removeprefix('*.') != 'orionintelligence.org' for host in hosts):
         raise ValueError('Existing certificate includes names outside this zone; review manually')
     args = ['--cert-name', name, '--email', config['email'], '--agree-tos', '--non-interactive', '--expand',
