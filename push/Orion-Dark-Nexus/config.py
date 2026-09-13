@@ -1,5 +1,4 @@
 import ast
-import copy
 from pathlib import Path
 import shutil
 import sys
@@ -30,7 +29,8 @@ def ignore(directory, names, default):
 def configure_runtime(config):
     services = config['services']
     services.pop('sandbox_manager', None)
-    for name in ('api', 'mcp'):
+    services.pop('mcp', None)
+    for name in ('api',):
         if name not in services:
             continue
         service = services[name]
@@ -48,17 +48,6 @@ def configure_runtime(config):
 
 def configure(config):
     configure_runtime(config)
-    services = config['services']
-    mcp = copy.deepcopy(services['api'])
-    mcp['container_name'] = 'orion-mcp2'
-    mcp['environment'].update(PYTHONPATH='/app:/app/api/mcp2', HEALTH_PORT='8300',
-                              ORION_NEXUS_API_BASE='http://trusted-nexus-api:8030')
-    mcp['command'] = ['python', '-c', 'from api.mcp2.server import main; main()']
-    mcp['ports'] = ['127.0.0.1:8300:8300']
-    mcp['depends_on'] = {'api': {'condition': 'service_healthy'}}
-    mcp['healthcheck']['test'] = ['CMD', 'python', '-c',
-        "import socket; socket.create_connection(('127.0.0.1',8300),5).close()"]
-    services['mcp'] = mcp
 
 
 def configure_pull(config):
