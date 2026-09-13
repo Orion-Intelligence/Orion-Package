@@ -15,3 +15,4 @@ for before, after in replacements.items():
         raise RuntimeError(f'Review Postfix launcher: expected {before!r} once')
     source = source.replace(before, after)
 script.write_text(source)
+script.replace('/build/postfix-entrypoint')

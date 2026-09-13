@@ -33,7 +33,7 @@ for root_name in roots:
 if leaked:
     raise SystemExit('Unprotected application files in final image: ' + ', '.join(leaked[:20]))
 executables = {
-    'mail': ('/usr/local/bin/mail-entrypoint', '/usr/local/bin/mail-incoming', '/usr/local/bin/postfix-entrypoint.sh'),
+    'mail': ('/usr/local/bin/mail-entrypoint', '/usr/local/bin/mail-incoming', '/usr/local/bin/postfix-entrypoint'),
 }.get(module, ())
 for name in executables:
     if Path(name).read_bytes()[:4] != b'\x7fELF':

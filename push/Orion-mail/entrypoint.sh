@@ -47,7 +47,7 @@ case "${1:-web}" in
         test -n "$relay_network"
         export POSTFIX_MYNETWORKS="127.0.0.0/8 $relay_network"
         (while sleep 43200; do /usr/local/bin/mail-entrypoint certs && postfix reload || true; done) &
-        exec /usr/local/bin/postfix-entrypoint.sh
+        exec /usr/local/bin/postfix-entrypoint
         ;;
     *) printf 'Unknown mail role: %s\n' "$1" >&2; exit 1 ;;
 esac
