@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import socket
 import subprocess
 import sys
 from urllib.parse import urlsplit
@@ -264,27 +263,7 @@ def module_prerequisites(path):
         if not re.search(r'server_name\s+' + re.escape(domain) + r'\s*;', config) or 'orion-mail-nginx:8080' not in config:
             raise ValueError('Configure/start the Intelligence shared edge with the Mail domain before continuing')
     if module == 'Orion-Dark-Nexus':
-        command('systemctl', 'is-active', '--quiet', 'orion-nexus-sandbox-manager-egress.service')
         command('docker', 'network', 'inspect', 'orion_nexus_backend')
-        directory = Path(get(document, 'ORION_SANDBOX_CLIENT_DIR', '/etc/dark-nexus/orion-client'))
-        for name in ('ca.crt', 'client.crt', 'client.key', 'api-key'):
-            command('test', '-s', directory / name, privileged=True)
-        command('openssl', 'verify', '-CAfile', directory / 'ca.crt', directory / 'client.crt', privileged=True)
-        command('openssl', 'x509', '-in', directory / 'client.crt', '-noout', '-checkend', '86400', privileged=True)
-        public = command('openssl', 'x509', '-in', directory / 'client.crt', '-noout', '-pubkey', privileged=True)
-        if public != command('openssl', 'pkey', '-in', directory / 'client.key', '-pubout', privileged=True):
-            raise ValueError('Sandbox client certificate and private key do not match')
-        endpoint = urlsplit(get(document, 'SANDBOX_BASE_URL', 'https://opensandbox.internal:8443'))
-        if endpoint.scheme != 'https' or endpoint.username or not endpoint.hostname:
-            raise ValueError('SANDBOX_BASE_URL must be an HTTPS URL')
-        host = get(document, 'SANDBOX_SERVER_IPV4', '127.0.0.1')
-        with socket.create_connection((host, endpoint.port or 443), timeout=5):
-            pass
-        command('openssl', 's_client', '-connect', f'{host}:{endpoint.port or 443}',
-                '-servername', endpoint.hostname, '-verify_hostname', endpoint.hostname,
-                '-verify_return_error', '-CAfile', directory / 'ca.crt',
-                '-cert', directory / 'client.crt', '-key', directory / 'client.key',
-                privileged=True, input_data='')
 
 
 def mail_dns(path):
@@ -365,8 +344,6 @@ def main(module=None):
         except (OSError, ValueError) as error:
             print(error)
             print('Required networks: shared_bridge (Micros/Social/Mail), orion_nexus_backend (Dark Nexus). Deploy Intelligence first or provision the existing network explicitly.')
-            if module == 'Orion-Dark-Nexus':
-                print('Provision the sandbox egress firewall, mTLS client files, and sandbox server; do not disable these protections. Check ORION_SANDBOX_CLIENT_DIR, SANDBOX_BASE_URL and SANDBOX_SERVER_IPV4 in .env.')
             choice = ask('Fix prerequisites then Enter to retry, or type network to create the required bridge')
             network = 'orion_nexus_backend' if module == 'Orion-Dark-Nexus' else 'shared_bridge'
             if choice == 'network' and module != 'Orion-Intelligence':

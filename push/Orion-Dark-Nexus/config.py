@@ -2,7 +2,6 @@ import ast
 import copy
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 
 SLUG = 'dark-nexus'
@@ -28,12 +27,28 @@ def ignore(directory, names, default):
     return excluded
 
 
-def configure(config):
+def configure_runtime(config):
     services = config['services']
-    manager = services['sandbox_manager']
-    manager['user'] = '0:0'
-    manager['command'] = ['uvicorn', 'dark_nexus_sandbox.sandbox_app:app', '--host', '0.0.0.0', '--port', '8090']
-    manager.setdefault('environment', {})['PYTHONPATH'] = '/app'
+    services.pop('sandbox_manager', None)
+    for name in ('api', 'mcp'):
+        if name not in services:
+            continue
+        service = services[name]
+        service.setdefault('environment', {}).pop('SANDBOX_MANAGER_URL', None)
+        service.setdefault('depends_on', {}).pop('sandbox_manager', None)
+        networks = service.get('networks', {})
+        if isinstance(networks, dict):
+            networks.pop('sandbox_api', None)
+        else:
+            service['networks'] = [network for network in networks
+                                   if network != 'sandbox_api']
+    config.get('networks', {}).pop('sandbox_api', None)
+    config.get('networks', {}).pop('sandbox_egress', None)
+
+
+def configure(config):
+    configure_runtime(config)
+    services = config['services']
     mcp = copy.deepcopy(services['api'])
     mcp['container_name'] = 'orion-mcp2'
     mcp['environment'].update(PYTHONPATH='/app:/app/api/mcp2', HEALTH_PORT='8300',
@@ -44,6 +59,10 @@ def configure(config):
     mcp['healthcheck']['test'] = ['CMD', 'python', '-c',
         "import socket; socket.create_connection(('127.0.0.1',8300),5).close()"]
     services['mcp'] = mcp
+
+
+def configure_pull(config):
+    configure_runtime(config)
 
 
 def prepare(context, repo, ignored, run):
@@ -61,12 +80,3 @@ def prepare(context, repo, ignored, run):
         shutil.copy2(Path(__file__).with_name('topic_classifier.sha256'), manifest)
     run(sys.executable, '-B', str(manager),
         '--destination', str(context / 'app/raw/validators/topic_classifier'))
-    run('docker', 'build', '--file', str(repo / 'dockerFiles/app_base_docker'),
-        '--tag', 'localhost/orion-nexus-kali-tools:local', str(repo))
-    shutil.copytree(repo / 'sandbox/dark_nexus_sandbox', context / 'app/dark_nexus_sandbox', ignore=ignored)
-
-
-def check_runtime():
-    result = subprocess.run(['systemctl', 'is-active', '--quiet', 'orion-nexus-sandbox-manager-egress.service'])
-    if result.returncode:
-        raise RuntimeError('Provision the existing Dark Nexus sandbox egress firewall before deployment.')
