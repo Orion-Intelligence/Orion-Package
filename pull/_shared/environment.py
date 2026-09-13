@@ -61,8 +61,6 @@ def ask(prompt):
     if prompt.startswith('1) '):
         options = re.split(r'\s{2,}(?=\d+\) )', prompt)
         return choose('Select an option', [re.sub(r'^\d+\) ', '', option) for option in options])
-    if prompt.endswith('[y/N]'):
-        return 'y' if choose(prompt.removesuffix('[y/N]').strip(), ['No', 'Yes']) == '2' else 'n'
     if prompt.startswith('Fix prerequisites then Enter'):
         return 'network' if choose('Missing prerequisites', ['Retry checks', 'Create required Docker bridge']) == '2' else ''
     if any(text in prompt.lower() for text in ('press enter', 'then enter to retry')):
@@ -228,40 +226,19 @@ def tls_menu(path):
     if cloudflare_setup.active():
         cloudflare_setup.ensure(path)
         return
-    failure = ''
-    while True:
-        document = Environment(path)
-        try:
-            directory, name, hosts = certificate_spec(document)
-        except ValueError as error:
-            print(error)
-            ask(f'Correct domain/certificate settings in {path}, then press Enter')
-            continue
-        title = f'TLS: {directory}/live/{name}'
-        if failure:
-            action = ('Press q, rerun ./pull.sh, choose Cloudflare setup, then choose Pull.'
-                      if 'Certificate files are missing' in failure else
-                      'Correct the reported DNS or certificate problem, then retry.')
-            title += '\n' + failure_text(failure, action)
-        choice = choose(title, ['Verify and continue', 'Change domains'])
-        try:
-            if choice == '2':
-                try:
-                    domain_menu(path)
-                except MenuBack:
-                    pass
-                continue
-            print('Checking DNS...', flush=True)
-            for host in hosts:
-                command('getent', 'ahosts', host.replace('*.', 'setup-check.'), timeout=10)
-            print('Checking certificate...', flush=True)
-            check_certificate(document)
-            print('TLS verified.', flush=True)
-            return
-        except MenuBack:
-            continue
-        except (OSError, ValueError) as error:
-            failure = str(error)
+    document = Environment(path)
+    _, _, hosts = certificate_spec(document)
+    try:
+        check_certificate(document)
+    except ValueError as error:
+        show_error(error, 'A Cloudflare token is required now to create or repair this certificate.')
+        cloudflare_setup.configure()
+        cloudflare_setup.ensure(path)
+        return
+    print('Checking DNS...', flush=True)
+    for host in hosts:
+        command('getent', 'ahosts', host.replace('*.', 'setup-check.'), timeout=10)
+    print('TLS verified.', flush=True)
 
 def required_values(path):
     document = Environment(path)
@@ -390,11 +367,10 @@ def main(module=None):
             choice = ask('Fix prerequisites then Enter to retry, or type network to create the required bridge')
             network = 'orion_nexus_backend' if module == 'Orion-Dark-Nexus' else 'shared_bridge'
             if choice == 'network' and module != 'Orion-Intelligence':
-                if ask(f'Create Docker bridge {network} if absent? [y/N]').lower() == 'y':
-                    try:
-                        command('docker', 'network', 'inspect', network)
-                    except ValueError:
-                        command('docker', 'network', 'create', '--driver', 'bridge', network)
+                try:
+                    command('docker', 'network', 'inspect', network)
+                except ValueError:
+                    command('docker', 'network', 'create', '--driver', 'bridge', network)
     required_values(path)
     print(f'{module}: setup gates passed; deployment will perform its remaining runtime/health checks.')
 

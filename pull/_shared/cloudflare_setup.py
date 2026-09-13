@@ -112,12 +112,10 @@ class Cloudflare:
         if not plan:
             print('Cloudflare DNS already matches; no changes required.')
             return
-        print('Proposed Cloudflare DNS changes (unrelated records will not be deleted):')
+        print('Applying Cloudflare DNS changes (unrelated records will not be deleted):')
         for previous, record in plan:
             content = '[DKIM public key]' if record['content'].startswith('v=DKIM1') else record['content']
             print(f"  {'Update' if previous else 'Create'} {record['type']} {record['name']} -> {content}; proxied={record.get('proxied', False)}")
-        if env.ask('Apply these DNS changes? [y/N]').lower() != 'y':
-            raise ValueError('DNS changes declined; deployment blocked')
         for previous, record in plan:
 
             current = self.plan([{key: value for key, value in record.items() if key != 'comment'}])
@@ -168,8 +166,6 @@ def configure():
         if re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
             break
         env.show_error('A valid Let’s Encrypt account email is required', 'Enter a complete email address, or q to cancel.')
-    if env.ask('Enable Cloudflare DNS/certificate setup for this run only? [y/N]').lower() != 'y':
-        raise ValueError('Cloudflare setup cancelled')
     session_request('set', 'cloudflare', {'zone_id': zone, 'email': email, 'owner': owner, 'token': token})
     print('Cloudflare enabled for this run only; no token or Zone ID saved.')
 
@@ -219,8 +215,6 @@ def certificates(document, config):
     except ValueError:
         pass
     print('Certificate issuance uses the API token in memory only. No unattended renewal will be configured for this certificate.')
-    if env.ask('Issue/renew now and accept Let’s Encrypt terms? [y/N]').lower() != 'y':
-        raise ValueError('Certificate issuance declined')
     if not shutil.which('certbot'):
         if not shutil.which('apt-get'):
             raise ValueError('Install Certbot and its dns-cloudflare plugin manually')
@@ -256,8 +250,6 @@ def ensure(path):
         setting = client.request('GET', client.base + '/settings/ssl')['result']
         if setting.get('value') != 'strict':
             print('Full (strict) is a ZONE-WIDE change; other sites with invalid origin certificates may break.')
-            if env.ask('Change this entire zone to Full (strict)? [y/N]').lower() != 'y':
-                raise ValueError('Set Full (strict) manually, then retry; no DNS changes applied')
             client.request('PATCH', client.base + '/settings/ssl', {'value': 'strict'})
             if client.request('GET', client.base + '/settings/ssl')['result'].get('value') != 'strict':
                 raise ValueError('Could not verify Full (strict)')
@@ -282,8 +274,6 @@ def ensure(path):
     print('Cloudflare DNS and certificates ready for this deployment. Provider firewall/SMTP port access still requires verification.')
     if path.parent.name == 'Orion-mail':
         print('Set provider PTR for ' + env.get(document, 'SERVER_IP') + ' to ' + env.get(document, 'SMTP_HOSTNAME'))
-        if env.ask('Confirm provider PTR and inbound/outbound TCP 25 access are configured [y/N]').lower() != 'y':
-            raise ValueError('Finish VPS-provider mail setup before continuing')
 
 
 def publish_dkim(path):
