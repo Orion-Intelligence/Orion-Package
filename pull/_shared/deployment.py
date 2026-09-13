@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from environment import ROOT, MenuBack, ask, update
+from environment import ROOT, MenuBack, ask, show_error, update
 from env_filler import MODULES
 sys.path.insert(0, str(ROOT.parent / '_shared'))
 from session import request
@@ -135,7 +135,7 @@ def menu(selected_modules=None):
         try:
             data = validate(ask('Project name'), ask('Public VPS IP'))
         except ValueError as error:
-            print(error)
+            show_error(error, 'Enter a valid project name and public VPS IP, then retry.')
             continue
         save(data)
 
@@ -164,5 +164,5 @@ if __name__ == '__main__':
         print('\nDeployment cancelled.', file=sys.stderr)
         sys.exit(1)
     except (OSError, ValueError, KeyError, TypeError) as error:
-        print(f'Deployment settings failed: {error}', file=sys.stderr)
+        show_error(f'Deployment settings failed: {error}', 'Correct the reported setting and rerun ./pull.sh.')
         sys.exit(1)

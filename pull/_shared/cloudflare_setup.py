@@ -283,5 +283,5 @@ if __name__ == '__main__':
         print('\nCloudflare setup cancelled.', file=sys.stderr)
         sys.exit(1)
     except (OSError, ValueError, KeyError, TypeError) as error:
-        print(f'Cloudflare setup failed: {error}', file=sys.stderr)
+        env.show_error(f'Cloudflare setup failed: {error}', 'Check the Zone ID, token permissions, DNS conflict, or connectivity, then retry Cloudflare setup.')
         sys.exit(1)

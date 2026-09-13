@@ -21,6 +21,16 @@ class MenuBack(Exception):
     pass
 
 
+def failure_text(message, action):
+    color = '\033[31m' if sys.stderr.isatty() else ''
+    reset = '\033[0m' if color else ''
+    return f'{color}Error: {message}{reset}\nAction: {action}'
+
+
+def show_error(message, action):
+    print(failure_text(message, action), file=sys.stderr, flush=True)
+
+
 def command(*args, privileged=False, capture=True, input_data=None, timeout=30):
     prefix = ['sudo', '--'] if privileged and os.geteuid() else []
     try:
@@ -196,6 +206,8 @@ def check_certificate(document):
     directory, name, hosts = certificate_spec(document)
     cert = directory / 'live' / name / 'fullchain.pem'
     key = cert.with_name('privkey.pem')
+    if not cert.is_file() or not key.is_file():
+        raise ValueError(f'Certificate files are missing from {cert.parent}')
     sans = command('openssl', 'x509', '-in', cert, '-noout', '-ext', 'subjectAltName', privileged=True)
     certificate_names = set(re.findall(r'DNS:([a-zA-Z0-9*.-]+)', sans))
     if any(host.startswith('*.') and host not in certificate_names for host in hosts):
@@ -227,7 +239,10 @@ def tls_menu(path):
             continue
         title = f'TLS: {directory}/live/{name}'
         if failure:
-            title += '\nLast check failed: ' + failure
+            action = ('Press q, rerun ./pull.sh, choose Cloudflare setup, then choose Pull.'
+                      if 'Certificate files are missing' in failure else
+                      'Correct the reported DNS or certificate problem, then retry.')
+            title += '\n' + failure_text(failure, action)
         choice = choose(title, ['Verify and continue', 'Change domains'])
         try:
             if choice == '2':
