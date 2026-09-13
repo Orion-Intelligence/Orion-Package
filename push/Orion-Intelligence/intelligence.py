@@ -71,11 +71,10 @@ def deployment(repo):
                          bind(SOURCE + '/backend/workspace/resource', '/app/workspace/resource', True),
                          bind('${ORION_LETSENCRYPT_DIR:-/etc/letsencrypt}', '/etc/letsencrypt', True),
                          {'type': 'volume', 'source': 'letsencrypt-webroot', 'target': '/var/www/letsencrypt', 'read_only': True}]
-    nginx['depends_on'] = {name: {'condition': 'service_healthy'} for name in ('web', 'documentation')}
+    nginx['depends_on'] = {name: {'condition': 'service_started'} for name in ('web', 'documentation')}
     nginx['command'] = ['sh', '-ec', '(while sleep 43200; do nginx -t && nginx -s reload || true; done) & exec nginx -g "daemon off;"']
     nginx['environment'] = {'ENABLE_BROTLI': '1', 'APP_URL': '${APP_URL}'}
-    nginx['healthcheck']['test'] = ['CMD-SHELL', 'host="$${APP_URL#https://}"; host="$${host%%/*}"; '
-                                  'wget --no-check-certificate -q -O /dev/null --header="Host: $$host" https://127.0.0.1/api/public']
+    nginx['healthcheck']['test'] = ['CMD', 'nginx', '-t']
     docs = services['documentation']
     docs.pop('build')
     docs.update(image=nginx['image'], read_only=True,
@@ -262,7 +261,10 @@ def pull(env_file, image):
     config = json.loads(manifest)
     if config.get('name') != PROJECT or any(config['services'][name]['image'] != IMAGE for name in ('web', 'cron')):
         raise ValueError('Unexpected Intelligence deployment manifest')
-    for volume in config['services']['nginx']['volumes']:
+    nginx_service = config['services']['nginx']
+    nginx_service['depends_on'] = {name: {'condition': 'service_started'} for name in ('web', 'documentation')}
+    nginx_service['healthcheck']['test'] = ['CMD', 'nginx', '-t']
+    for volume in nginx_service['volumes']:
         if volume['target'] == '/etc/nginx/nginx.conf':
             volume['source'] = '${ORION_INTELLIGENCE_NGINX:?Set the rendered nginx configuration}'
     manifest = json.dumps(config)
@@ -320,18 +322,18 @@ def pull(env_file, image):
         compose('run', '--rm', '--no-deps', '--user', '0:0', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE',
                 '--cap-add', 'FOWNER', 'web', 'prepare')
         compose('run', '--rm', '--no-deps', 'web', 'check-storage')
+        compose('run', '--rm', '--no-deps', 'nginx', 'nginx', '-t')
         try:
             compose('up', '--detach', '--no-build', '--wait', '--wait-timeout', '900',
-                    'web', 'cron', 'documentation', 'mongo', 'elasticsearch', 'arangodb', 'redis_server')
+                    'web', 'cron', 'documentation', 'mongo', 'elasticsearch', 'arangodb', 'redis_server', 'nginx')
         except subprocess.CalledProcessError:
-            failure('trusted-web-main did not become healthy; nginx was not started',
-                    'Read the health output and web logs below, correct the first application error, then rerun ./pull.sh.')
+            failure('Intelligence services did not become healthy',
+                    'Read the health output and service logs below, correct the first application error, then rerun ./pull.sh.')
             subprocess.run([*command, 'ps', '--all'], env=environment)
             subprocess.run(['docker', 'inspect', '--format', '{{json .State.Health}}', 'trusted-web-main'], env=environment)
             subprocess.run(['docker', 'logs', '--tail', '200', 'trusted-web-main'], env=environment)
+            subprocess.run(['docker', 'logs', '--tail', '100', 'trusted-web-nginx'], env=environment)
             raise
-        compose('run', '--rm', '--no-deps', 'nginx', 'nginx', '-t')
-        compose('up', '--detach', '--no-build', '--wait', '--wait-timeout', '300', 'nginx')
         runtime.mkdir(parents=True, exist_ok=True)
         (runtime / 'compose.json').write_text(manifest)
         print('Intelligence deployed. Keep the existing Let’s Encrypt renewal job enabled; nginx reloads every 12 hours.')
