@@ -330,7 +330,8 @@ def pull(env_file, image):
         compose('run', '--rm', '--no-deps', '--user', '0:0', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE',
                 '--cap-add', 'FOWNER', 'web', 'prepare')
         compose('run', '--rm', '--no-deps', 'web', 'check-storage')
-        compose('run', '--rm', '--no-deps', 'nginx', 'nginx', '-t')
+        compose('run', '--rm', '--no-deps', '--add-host', 'documentation:127.0.0.1',
+                'nginx', 'nginx', '-t')
         try:
             compose('up', '--detach', '--no-build', '--wait', '--wait-timeout', '900',
                     'web', 'cron', 'documentation', 'mongo', 'elasticsearch', 'arangodb', 'redis_server', 'nginx')
