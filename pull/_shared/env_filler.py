@@ -15,6 +15,7 @@ MANUAL = '{value}'
 MODULES = ('Orion-Intelligence', 'Orion-Micros', 'Orion-Social',
            'Orion-Dark-Nexus', 'Orion-mail', 'Orion-Tor2Web')
 SHARED = {
+    'S_SUPER_PASSWORD_V1': ('Orion-Intelligence', 'Orion-Micros', 'Orion-Social'),
     'ORION_SOCIAL_INTERNAL_TOKEN': ('Orion-Intelligence', 'Orion-Social'),
     'ORION_MAIL_SSO_CLIENT_SECRET': ('Orion-Intelligence', 'Orion-mail'),
     'NEXUS_PASSWORD': ('Orion-Intelligence', 'Orion-Dark-Nexus'),
@@ -24,8 +25,8 @@ AUTOMATIC = {
                           'ENCRYPTION_KEY', 'MONGO_ROOT_PASSWORD', 'ELASTIC_ROOT_PASSWORD',
                           'REDIS_PASSWORD', 'ARANGO_PASSWORD', 'TRAEFIK_PASSWORD', 'DEMO_PASSWORD',
                           'ORION_SOCIAL_INTERNAL_TOKEN', 'ORION_MAIL_SSO_CLIENT_SECRET', 'NEXUS_PASSWORD'},
-    'Orion-Micros': {'S_SUPER_PASSWORD_V1', 'REDIS_PASSWORD', 'TOR_PASSWORD', 'FULL_SCAN_ZAP_API_KEY'},
-    'Orion-Social': {'S_SUPER_PASSWORD_V1', 'REDIS_PASSWORD', 'TOR_PASSWORD', 'ORION_SOCIAL_INTERNAL_TOKEN'},
+    'Orion-Micros': {'S_SUPER_PASSWORD_V1', 'REDIS_PASSWORD', 'I2P_PASSWORD', 'TOR_PASSWORD', 'FULL_SCAN_ZAP_API_KEY'},
+    'Orion-Social': {'S_SUPER_PASSWORD_V1', 'REDIS_PASSWORD', 'I2P_PASSWORD', 'TOR_PASSWORD', 'ORION_SOCIAL_INTERNAL_TOKEN'},
     'Orion-Dark-Nexus': {'ENCRYPTION_KEY', 'MONGO_ROOT_PASSWORD', 'NEXUS_PASSWORD'},
     'Orion-mail': {'ENCRYPTION_KEY', 'MONGO_ROOT_PASSWORD', 'MONGODB_URL',
                    'ORION_MAIL_SSO_CLIENT_SECRET', 'INCOMING_MAIL_TOKEN', 'RSPAMD_CONTROLLER_PASSWORD'},
@@ -113,8 +114,13 @@ def fill_shared(documents, groups, regenerate):
     for key, names in groups.items():
         values = [documents[name].get(key) for name in names]
         existing = {value for value in values if not pending(value)}
-        if not regenerate and (len(existing) > 1 or '' in existing):
-            raise ValueError(f'{key}: conflicting/empty values in {", ".join(names)}; reconcile them explicitly')
+        if not regenerate and '' in existing:
+            raise ValueError(f'{key}: empty value in {", ".join(names)}')
+        if not regenerate and len(existing) > 1:
+            value = next(documents[name].get(key) for name in names if not pending(documents[name].get(key)))
+            for name in names:
+                if documents[name].get(key) != value:
+                    documents[name].set(key, value, replace=True)
         for name in names:
             raw = documents[name].entries[key][2]
             if AUTO in raw and key not in AUTOMATIC[name]:
@@ -211,6 +217,8 @@ def fill(root, module=None, *, all_modules=False, regenerate=False):
             fill_module(documents[name], regenerate)
         save(documents)
         for name, document in documents.items():
+            if module is not None and name != module:
+                continue
             remaining = [key for key in document.entries if pending(document.get(key))]
             if remaining:
                 print(f'{name}: still requires input/filling for {", ".join(remaining)}')

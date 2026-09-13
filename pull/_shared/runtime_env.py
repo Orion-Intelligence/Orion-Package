@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import tempfile
 
-from env_filler import Environment, MODULES
+from env_filler import Environment, MODULES, pending
 
 
 def prepare(root):
@@ -23,7 +23,7 @@ def prepare(root):
             previous = Environment(target) if target.exists() else None
             lines = []
             for key in template.entries:
-                document = previous if previous and key in previous.entries else template
+                document = previous if previous and key in previous.entries and not pending(previous.get(key)) else template
                 _, prefix, raw, comment = document.entries[key]
                 lines.append(prefix + raw + comment + '\n')
             if previous:

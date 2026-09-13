@@ -242,14 +242,15 @@ def tls_menu(path):
 
 def required_values(path):
     document = Environment(path)
-    missing = [key for key in document.entries if pending(document.get(key))]
+    missing = [(key, document.get(key)) for key in document.entries if pending(document.get(key))]
 
     from env_filler import AUTOMATIC
     for key in AUTOMATIC[path.parent.name]:
         if key not in document.entries or not document.get(key).strip():
-            missing.append(key)
+            missing.append((key, '{value_auto}'))
     if missing:
-        raise ValueError(f'Edit {path}; required values: {", ".join(sorted(set(missing)))}. Use fill_env.py only for {{value_auto}}, not external API keys.')
+        assignments = '\n'.join(f'  {key}={value}' for key, value in sorted(set(missing)))
+        raise ValueError(f'Required environment values now:\n{assignments}')
 
 
 def module_prerequisites(path):
@@ -348,8 +349,10 @@ def main(module=None):
                 required_values(path)
                 break
             except ValueError as error:
-                print(error)
-                ask('Edit .env in another terminal, then press Enter to recheck')
+                choice = choose(failure_text(error, f'Set the listed values in {path}, then recheck. Passwords and internal shared secrets are generated automatically.'),
+                                ['Recheck', 'Stop pull'])
+                if choice == '2':
+                    raise KeyboardInterrupt
         try:
             tls_menu(path)
             break
