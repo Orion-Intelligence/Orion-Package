@@ -48,6 +48,12 @@ Certificates are reused when valid. Initial setup configures Certbot DNS challen
 
 **Rebuild and push Orion-mail once before using this flow:** its image now supports a separate SMTP hostname. Pull refuses older mail images before changing DNS. The current Postfix profile requires a public IPv4 address. Configure reverse DNS/PTR to the SMTP hostname through your VPS provider and confirm TCP 25 is allowed; Cloudflare cannot configure those provider settings. Tor2Web and the shared edge cannot both bind the same host port—keep their listeners on separate host IPs/ports or separate servers.
 
+### Docker Hub login
+
+Choose **Configure/change Docker Hub PAT** (option 4) in the project menu, or configure it when prompted before pulling. Enter your Docker Hub username and a PAT with **Read** permission for the image repositories. Input is hidden and passed to `docker login --password-stdin`; Docker saves the login for the current OS user, not in module `.env` files. Without a credential helper, Docker's config stores credentials in base64, not encrypted. Use the same OS user for subsequent pulls.
+
+A successful login does not create an image or grant repository access. If `msmannan00/orion-intelligence:latest` has not been published, build and push Orion-Intelligence first using `./push.sh` on the build machine. Publishing requires **Read & Write** permission. Docker Hub PATs are separate from Cloudflare API tokens.
+
 ### 2. Prepare module configuration
 
 Each module ships a checked-in `pull/<repository>/env` file containing safe defaults and credential placeholders. After downloading an image, pull creates or refreshes runtime `pull/<repository>/.env` from these files, applies the saved project/IP settings, and runs the filler. Shared modules are initialized together so shared credentials stay consistent. Existing runtime values—including passwords, encryption keys, API credentials, and extra settings—are preserved; new keys are added from `env`. Runtime `.env` files stay ignored by Git. For an existing deployment, restore its original `.env` before pulling; do not generate replacements for existing database/encryption credentials.
