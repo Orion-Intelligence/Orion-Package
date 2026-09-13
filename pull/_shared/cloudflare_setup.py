@@ -107,7 +107,10 @@ class Cloudflare:
             def equivalent(key, value):
                 before = previous.get(key) if previous else None
                 if key == 'content' and record['type'] == 'TXT':
-                    return str(before).strip('"') == value.strip('"')
+                    def text_value(text):
+                        text = str(text)
+                        return ''.join(re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', text)) if re.fullmatch(r'(?:"(?:[^"\\]|\\.)*"\s*)+', text) else text
+                    return text_value(before) == text_value(value)
                 if key == 'content' and record['type'] == 'MX':
                     return str(before).lower().rstrip('.') == value.lower().rstrip('.')
                 return before == value

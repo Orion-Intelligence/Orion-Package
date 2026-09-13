@@ -64,7 +64,7 @@ Runtime configuration belongs in `pull/<repository>/.env`. These files are ignor
 ./pull.sh
 ```
 
-Use **Up/Down** to navigate, **Space** to select/unselect modules or **All**, and **Enter** to continue. Implemented modules are Intelligence, Micros, Social, Dark Nexus, Mail, and Tor2Web; the other listed modules are pending.
+Use **Up/Down** to navigate, **Space** to select/unselect modules or **All**, and **Enter** to continue. Single-choice actions, confirmations, and retry prompts use arrow-key radio menus (Left/Right also work); **q/Esc** cancels. Only actual values such as project name, IP, Zone ID, email, and token use text input. Implemented modules are Intelligence, Micros, Social, Dark Nexus, Mail, and Tor2Web; the other listed modules are pending.
 
 The workflow checks host dependencies, downloads each selected application image, runs its environment filler, and opens its setup menu before deployment. Missing requirements block progress and provide retry instructions.
 

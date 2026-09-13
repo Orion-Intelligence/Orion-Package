@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ask() { local reply; read -r -p "$1 [y/N] " reply; [[ "$reply" == y || "$reply" == Y ]]; }
+MENU="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/menu.sh"
+ask() { local reply; reply="$(bash "$MENU" "$1" No Yes)" || return $?; [[ "$reply" == 2 ]]; }
 admin() { if ((EUID == 0)); then "$@"; else sudo -- "$@"; fi; }
 apt_host() {
     [[ -f /etc/os-release ]] || return 1
@@ -51,12 +52,11 @@ if ! docker --version >/dev/null 2>&1 || ! compose_ready ||
 fi
 while ! docker info >/dev/null 2>&1; do
     printf 'Docker is installed but this user cannot reach the daemon.\n'
-    printf '1) Start local Docker with sudo  2) Retry after fixing permissions/context manually  q) Cancel\n'
-    read -r -p '> ' choice
+    choice="$(bash "$MENU" 'Docker is unavailable' 'Start local Docker with sudo' 'Retry after fixing permissions/context' 'Cancel')" || exit $?
     case "$choice" in
         1) ask 'Enable and start docker.service?' && admin systemctl enable --now docker || true ;;
         2) ;;
-        q|Q) exit 1 ;;
+        3) exit 1 ;;
     esac
     printf 'No socket chmod or automatic docker-group membership changes are made (Docker access grants root-equivalent power).\n'
 done

@@ -31,7 +31,28 @@ def command(*args, privileged=False, capture=True, input_data=None):
     return result.stdout or ''
 
 
+def choose(prompt, options):
+    result = subprocess.run(['bash', str(ROOT.parent / '_shared/menu.sh'), prompt, *options],
+                            capture_output=True, text=True)
+    if result.returncode in (130, 143):
+        raise KeyboardInterrupt
+    if result.returncode or result.stdout.strip() not in {str(index + 1) for index in range(len(options))}:
+        raise ValueError('Interactive menu failed: ' + result.stderr.strip())
+    return result.stdout.strip()
+
+
 def ask(prompt):
+    if prompt.startswith('1) '):
+        options = re.split(r'\s{2,}(?=\d+\) )', prompt)
+        return choose('Select an option', [re.sub(r'^\d+\) ', '', option) for option in options])
+    if prompt.endswith('[y/N]'):
+        return 'y' if choose(prompt.removesuffix('[y/N]').strip(), ['No', 'Yes']) == '2' else 'n'
+    if prompt.startswith('Fix prerequisites then Enter'):
+        return 'network' if choose('Missing prerequisites', ['Retry checks', 'Create required Docker bridge']) == '2' else ''
+    if any(text in prompt.lower() for text in ('press enter', 'then enter to retry')):
+        if choose(prompt, ['Retry / continue', 'Cancel']) == '2':
+            raise KeyboardInterrupt
+        return ''
     reply = input(prompt + ' (q to cancel): ').strip()
     if reply.lower() == 'q':
         raise KeyboardInterrupt
@@ -388,8 +409,7 @@ def main(module=None):
     if not sys.stdin.isatty():
         raise ValueError('Environment setup requires a terminal; no prerequisites are silently skipped')
     if not module:
-        print('\n'.join(f'{index + 1}) {name}' for index, name in enumerate(MODULES)))
-        choice = ask('Choose module')
+        choice = choose('Choose module', list(MODULES))
         if not choice.isdigit() or not 1 <= int(choice) <= len(MODULES):
             raise ValueError('Choose a listed module')
         module = MODULES[int(choice) - 1]
