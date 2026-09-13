@@ -59,7 +59,7 @@ def main():
         check_storage()
     elif role == 'web':
         check_storage()
-        os.execvp('gunicorn', ['gunicorn', '-w', os.environ.get('ORION_WEB_WORKERS', '4'), '--threads', '4',
+        os.execvp('gunicorn', ['gunicorn', '-w', os.environ.get('ORION_WEB_WORKERS', '1'), '--threads', '4',
                               '-k', 'uvicorn.workers.UvicornWorker', 'main:app', '--bind', '0.0.0.0:8070', '--timeout', '900',
                               '--control-socket', '/tmp/gunicorn.ctl'])
     elif role == 'cron':

@@ -17,6 +17,7 @@ SEMANTIC_ENABLED=0
 PRODUCTION_DOMAIN='*'
 APP_UID=1000
 APP_GID=1000
+ORION_WEB_WORKERS=1
 TENANT_BASE_DOMAIN=orionintelligence.org
 ORION_MAIL_REDIRECT_URIS=https://mail.orionintelligence.org/auth/callback
 ORION_MAIL_PUBLIC_URL=https://mail.orionintelligence.org
