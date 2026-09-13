@@ -23,6 +23,42 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
 
+def service_diagnostics(configure, config):
+    for service in getattr(configure, 'RECOVERABLE_SERVICES', {}):
+        container = config['services'][service].get('container_name')
+        if not container:
+            continue
+        print(f'{service}: container status and recent logs', file=sys.stderr)
+        subprocess.run(('docker', 'inspect', '--format',
+                        'Image={{.Config.Image}} Memory={{.HostConfig.Memory}} Status={{.State.Status}} OOMKilled={{.State.OOMKilled}} Restarts={{.RestartCount}} Health={{if .State.Health}}{{.State.Health.Status}}{{end}}',
+                        container), check=False)
+        subprocess.run(('docker', 'logs', '--tail', '150', container), check=False)
+
+
+def prepare_recoverable_services(configure, config, command, env):
+    recoverable = getattr(configure, 'RECOVERABLE_SERVICES', {})
+    if not recoverable:
+        return
+    services = tuple(recoverable)
+    start = (*command, 'up', '--detach', '--no-build', '--wait', '--wait-timeout', '720', *services)
+    try:
+        run(*start, env=env)
+        return
+    except subprocess.CalledProcessError:
+        service_diagnostics(configure, config)
+    print('ClamAV did not become healthy; rebuilding its disposable signature cache and retrying.', file=sys.stderr)
+    for service, volumes in recoverable.items():
+        subprocess.run((*command, 'rm', '--stop', '--force', service), env=env, check=False)
+        for volume in volumes:
+            subprocess.run(('docker', 'volume', 'rm', f'{config["name"]}_{volume}'), check=False)
+    try:
+        run(*command, 'up', '--detach', '--no-build', '--force-recreate', '--wait',
+            '--wait-timeout', '720', *services, env=env)
+    except subprocess.CalledProcessError:
+        service_diagnostics(configure, config)
+        raise
+
+
 def deployment(configure, repo):
     result = run('docker', 'compose', '--env-file', '/dev/null', '--file', str(repo / configure.COMPOSE),
                  'config', '--no-interpolate', '--no-env-resolution', '--no-path-resolution',
@@ -147,6 +183,9 @@ def pull(configure, env_file, image):
     manifest = run('docker', 'run', '--rm', '--network', 'none', '--entrypoint', '/bin/cat',
                    image, '/opt/orion/compose.json', capture_output=True, text=True).stdout
     config = json.loads(manifest)
+    if hasattr(configure, 'configure_pull'):
+        configure.configure_pull(config)
+        manifest = json.dumps(config)
     if config['services']['api']['image'] != '${ORION_PACKAGE_IMAGE:?Select the application image}':
         raise RuntimeError('Unexpected deployment manifest')
     runtime = env_file.parent / '.runtime'
@@ -161,7 +200,12 @@ def pull(configure, env_file, image):
                    '--file', str(compose)]
         run(*command, 'config', '--quiet', env=env)
         run(*command, 'pull', env=env)
-        run(*command, 'up', '--detach', '--no-build', '--wait', '--wait-timeout', '900', env=env)
+        prepare_recoverable_services(configure, config, command, env)
+        try:
+            run(*command, 'up', '--detach', '--no-build', '--wait', '--wait-timeout', '900', env=env)
+        except subprocess.CalledProcessError:
+            service_diagnostics(configure, config)
+            raise
 
 
 if __name__ == '__main__':

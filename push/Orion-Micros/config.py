@@ -4,9 +4,10 @@ MODULE = 'server:app'
 PROJECT = 'trusted-micros'
 COMPOSE = 'docker-compose.yml'
 REQUIRED_ENV = ('REDIS_PASSWORD', 'FULL_SCAN_ZAP_API_KEY', 'TOR_PASSWORD')
+RECOVERABLE_SERVICES = {'clamav': ('clamav_db',)}
 
 
-def configure(config):
+def configure_runtime(config):
     services = config['services']
     clamav = services['clamav']
     clamav['image'] = 'clamav/clamav:1.5.4@sha256:0af8760cd96f9ab67d07977af36e155431581a9fe9f0ec8b256c9f855fda183e'
@@ -28,8 +29,17 @@ def configure(config):
         service['volumes'] = [volume for volume in service.get('volumes', [])
                               if volume['target'] != '/var/run/clamav']
     config.get('volumes', {}).pop('clamav_socket', None)
+
+
+def configure(config):
+    configure_runtime(config)
+    services = config['services']
     services['api'].setdefault('volumes', []).append({
         'type': 'bind', 'source': '${ORION_RUNTIME_DIR:-${ORION_SOURCE_DIR}}/app/raw/netintel',
         'target': '/app/raw/netintel'})
     services['tor-extend-1']['healthcheck']['test'] = [
         'CMD-SHELL', 'curl --fail --max-time 15 --proxy socks5h://localhost:9352 https://check.torproject.org/api/ip >/dev/null']
+
+
+def configure_pull(config):
+    configure_runtime(config)
