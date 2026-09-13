@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.runtime/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.log
+*.pem
+*.key
+.DS_Store

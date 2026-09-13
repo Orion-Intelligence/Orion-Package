@@ -1,0 +1,27 @@
+# Static service settings: preserve Docker names, ports and network addresses.
+GPU_ENABLED=true
+OLLAMA_CONTAINER_RUNTIME=nvidia
+OLLAMA_NVIDIA_VISIBLE_DEVICES=all
+OLLAMA_CHAT_NUM_CTX=20000
+OLLAMA_NUM_THREAD=16
+OLLAMA_KEEP_ALIVE=-1
+OLLAMA_MAX_LOADED_MODELS=2
+PRODUCTION="0"
+AI_PRODUCTION="1"
+LIVE_LLM_BASE_URL=https://openrouter.ai/api/v1
+LIVE_LLM_MODEL=qwen/qwen3-235b-a22b
+CODE_GENERATION_MODEL=deepseek/deepseek-v4-flash
+LLM_CHAT_URL=http://model_engine:11434/api/chat
+DEFAULT_MODEL=qwen3.5:9b-q4_K_M
+DEFAULT_MODEL_SHA256=6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7
+MONGO_DATABASE='trustly'
+
+# Deployment values: replace every {value}; never commit the populated .env.
+# Use the sandbox image available on the deployment host, not another host's image ID.
+SANDBOX_IMAGE={value}
+ENCRYPTION_KEY={value}
+LIVE_LLM_API_KEY={value}
+MONGO_ROOT_USERNAME={value}
+MONGO_ROOT_PASSWORD={value}
+NEXUS_USERNAME={value}
+NEXUS_PASSWORD={value}

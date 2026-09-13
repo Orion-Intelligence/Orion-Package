@@ -1,0 +1,35 @@
+# Static service settings: preserve Docker names, ports and network addresses.
+MONGODB_DATABASE=orion_mail
+SEED_LOCAL_TEST_MAILBOXES=false
+ORION_INTELLIGENCE_INTERNAL_URL=http://trusted-web-main:8070
+ORION_MAIL_SESSION_MAX_AGE_SECONDS=1800
+ORION_SSO_TIMEOUT_SECONDS=5
+MAIL_DOMAIN=mail.orionintelligence.org
+SMTP_HOST=localhost
+SMTP_PORT=25
+SMTP_START_TLS=false
+TRANSLATION_API_URL=https://translate.googleapis.com/translate_a/single
+TRANSLATION_TIMEOUT_SECONDS=20
+COOKIE_SECURE=false
+RSPAMD_MILTER_PORT=11332
+RSPAMD_UI_PORT=11334
+FRESHCLAM_CHECKS=2
+APP_UID=1000
+APP_GID=1000
+
+# Deployment values: replace every {value}; never commit the populated .env.
+# Use production HTTPS URLs/origins here, not the source checkout's development URLs.
+ORION_INTELLIGENCE_PUBLIC_URL={value}
+ORION_MAIL_PUBLIC_URLS={value}
+CORS_ALLOWED_ORIGINS={value}
+ALLOWED_HOSTS={value}
+MONGO_ROOT_USERNAME={value}
+MONGO_ROOT_PASSWORD={value}
+MONGODB_URL=mongodb://{value}:{value}@localhost:27017/?authSource=admin
+ORION_MAIL_SSO_CLIENT_SECRET={value}
+SMTP_USERNAME={value}
+SMTP_PASSWORD={value}
+ENCRYPTION_KEY={value}
+INCOMING_MAIL_TOKEN={value}
+LETSENCRYPT_EMAIL={value}
+RSPAMD_CONTROLLER_PASSWORD={value}
