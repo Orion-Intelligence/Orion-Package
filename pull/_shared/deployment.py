@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from environment import ROOT, ask, update
+from environment import ROOT, MenuBack, ask, update
 from env_filler import MODULES
 sys.path.insert(0, str(ROOT.parent / '_shared'))
 from session import request
@@ -78,14 +78,12 @@ def configure_docker(action='pull'):
         raise ValueError('Run push.sh or pull.sh in a terminal to configure Docker Hub login')
     if not os.environ.get('ORION_SESSION_SOCKET'):
         raise ValueError('A private in-memory credential session is required')
-    default = os.environ.get('ORION_IMAGE_NAMESPACE', 'msmannan00')
+    username = os.environ.get('ORION_IMAGE_NAMESPACE', 'msmannan00')
+    if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', username):
+        raise ValueError('ORION_IMAGE_NAMESPACE is not a valid Docker Hub namespace')
     permission = 'Read & Write' if action == 'push' else 'Read'
-    print(f'Docker Hub PAT: {permission} access. Credentials are held in memory for this run only.')
+    print(f'Docker Hub PAT for {username}: {permission} access. Credentials are held in memory for this run only.')
     while True:
-        username = ask(f'Docker Hub username (Enter for {default})') or default
-        if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', username):
-            print('Invalid Docker Hub username')
-            continue
         token = getpass.getpass('Docker Hub PAT (hidden): ').strip()
         if not token or any(character.isspace() for character in token):
             print('Enter a nonempty PAT without whitespace, or Ctrl+C to cancel.')
@@ -102,7 +100,7 @@ def configure_docker(action='pull'):
         return
 
 
-def menu():
+def menu(selected_modules=None):
     if not sys.stdin.isatty():
         raise ValueError('Run pull.sh in a terminal to configure this VPS')
     while True:
@@ -111,16 +109,24 @@ def menu():
             print(f"Project: {data['project_name']} | VPS IP: {data['server_ip']}")
             print('Application: https://' + data['project_name'] + '.orionintelligence.org')
             print('Mail: https://' + data['project_name'] + 'mail.orionintelligence.org')
-            choice = ask('1) Pull using these settings  2) Edit project/IP  3) Configure Cloudflare for this run  4) Configure/change Docker Hub PAT')
+            public_selected = not selected_modules or any(module in {'Orion-Intelligence', 'Orion-mail', 'Orion-Tor2Web'} for module in selected_modules)
+            options = ['Pull', 'Edit project/IP']
+            if public_selected:
+                options.append('Cloudflare setup')
+            try:
+                choice = ask('  '.join(f'{index}) {label}' for index, label in enumerate(options, 1)))
+            except MenuBack:
+                raise KeyboardInterrupt from None
             if choice == '1':
                 if not request('get', 'docker_ready'):
                     configure_docker()
                 return
-            if choice == '4':
-                configure_docker()
             if choice == '3':
                 from cloudflare_setup import configure
-                configure()
+                try:
+                    configure()
+                except MenuBack:
+                    continue
             if choice != '2':
                 continue
             print('Editing updates this existing deployment; it does not create a second isolated stack. Existing credentials/data are retained.')
@@ -138,6 +144,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', choices=MODULES)
     parser.add_argument('--docker-login', choices=('push', 'pull'))
+    parser.add_argument('--modules', nargs='*', choices=MODULES)
     args = parser.parse_args()
     if args.docker_login:
         configure_docker(args.docker_login)
@@ -147,7 +154,7 @@ def main():
         prepare(ROOT)
         update(ROOT / args.apply / '.env', values(args.apply, data))
     else:
-        menu()
+        menu(args.modules)
 
 
 if __name__ == '__main__':

@@ -12,7 +12,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 printf '\033[?1049h\033[?25l' >&3
 while true; do
-    printf '\033[H\033[2J%s\n\nArrows: choose | Space: select | Enter: confirm | q/Esc: cancel\n\n' "$title" >&3
+    printf '\033[H\033[2J%s\n\nArrows: choose | Space: select | Enter: confirm | Esc: back | q: quit\n\n' "$title" >&3
     for index in "${!options[@]}"; do
         if ((index == cursor)); then
             printf '\033[7m  (*) %s\033[0m\n' "${options[index]}" >&3
@@ -31,6 +31,7 @@ while true; do
         $'\033[B'|$'\033[C'|$'\033OB'|$'\033OC'|j|l) cursor=$(((cursor + 1) % ${#options[@]})) ;;
         ' ') ;;
         '') printf '%s\n' "$((cursor + 1))"; exit 0 ;;
-        q|Q|$'\033'|$'\004') exit 130 ;;
+        q|Q|$'\004') exit 130 ;;
+        $'\033') exit 129 ;;
     esac
 done

@@ -17,6 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLIC = {'Orion-Intelligence', 'Orion-mail', 'Orion-Tor2Web'}
 
 
+class MenuBack(Exception):
+    pass
+
+
 def command(*args, privileged=False, capture=True, input_data=None):
     prefix = ['sudo', '--'] if privileged and os.geteuid() else []
     try:
@@ -34,6 +38,8 @@ def command(*args, privileged=False, capture=True, input_data=None):
 def choose(prompt, options):
     result = subprocess.run(['bash', str(ROOT.parent / '_shared/menu.sh'), prompt, *options],
                             capture_output=True, text=True)
+    if result.returncode == 129:
+        raise MenuBack
     if result.returncode in (130, 143):
         raise KeyboardInterrupt
     if result.returncode or result.stdout.strip() not in {str(index + 1) for index in range(len(options))}:
@@ -152,7 +158,7 @@ def domain_menu(path):
         except ValueError as error:
             current = ()
             print(error)
-        choice = ask('1) Set/change domains  2) Confirm these domains and continue')
+        choice = ask('1) Change domains  2) Continue')
         try:
             if choice == '1':
                 edit_domains(path)
@@ -210,9 +216,6 @@ def tls_menu(path):
     if cloudflare_setup.active():
         cloudflare_setup.ensure(path)
         return
-    confirmed_dns = False
-    confirmed_renewal = False
-    previous = None
     while True:
         document = Environment(path)
         try:
@@ -221,45 +224,27 @@ def tls_menu(path):
             print(error)
             ask(f'Correct domain/certificate settings in {path}, then press Enter')
             continue
-        current = (directory, name, hosts)
-        if current != previous:
-            confirmed_dns = confirmed_renewal = False
-            previous = current
-        print(f'TLS: {directory}/live/{name}; required names: {", ".join(hosts)}')
-        if get(document, 'SERVER_IP'):
-            print('Expected VPS origin IP: ' + get(document, 'SERVER_IP') + ' (verify this in Cloudflare; proxied DNS returns Cloudflare IPs)')
-        print('Cloudflare: use Full (strict). Point public A/AAAA records at this server; Tor2Web also needs *.onion.<basehost>.')
-        if path.parent.name == 'Orion-mail':
-            print('Mail SMTP/MX host must be DNS-only (not orange-cloud proxied). Configure MX, SPF, DKIM, DMARC and provider PTR; allow inbound TCP 25.')
-        choice = ask('1) Check DNS and confirm origin  2) Cloudflare setup instructions  3) Check certificate and continue  4) Set/change certificate location  5) Verify renewal  6) Change domains')
+        print(f'Manual TLS: {directory}/live/{name}; required names: {", ".join(hosts)}')
+        choice = ask('1) Verify and continue  2) Change domains')
         try:
-            if choice == '1':
-                for host in hosts:
-                    lookup = host.replace('*.', 'setup-check.')
-                    socket.getaddrinfo(lookup, 443, type=socket.SOCK_STREAM)
-                confirmed_dns = ask('DNS resolves. Confirm DNS targets, Cloudflare TLS mode, and server/provider firewall rules are correct [y/N]').lower() == 'y'
-            elif choice == '2':
-                print('Cloudflare is opt-in: cancel and select option 3 in the pull project menu. Otherwise provision certificates manually.')
-            elif choice == '3':
-                check_certificate(document)
-                if not confirmed_dns or not confirmed_renewal:
-                    raise ValueError('Complete DNS confirmation and renewal verification first')
-                return
-            elif choice == '4':
-                directory = ask('Host Let’s Encrypt directory (usually /etc/letsencrypt)')
-                name = ask('Certificate name under live/')
-                if not Path(directory).is_absolute() or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', name):
-                    raise ValueError('Use an absolute directory and a plain certificate name')
-                values = {'LETSENCRYPT_DIR' if path.parent.name == 'Orion-Tor2Web' else 'ORION_LETSENCRYPT_DIR': directory}
-                values.update({'ORION_MAIL_CERT_DIR': '/etc/letsencrypt/live/' + name} if path.parent.name == 'Orion-mail' else {'LETSENCRYPT_CERT_NAME': name})
-                update(path, values)
-            elif choice == '6':
-                domain_menu(path)
-            elif choice == '5':
-                confirmed_renewal = ask('Have you arranged renewal before expiry (manual token entry or an independently managed renewal service)? [y/N]').lower() == 'y'
+            if choice == '2':
+                try:
+                    domain_menu(path)
+                except MenuBack:
+                    pass
+                continue
+            for host in hosts:
+                socket.getaddrinfo(host.replace('*.', 'setup-check.'), 443, type=socket.SOCK_STREAM)
+            if ask('Confirm DNS targets this VPS, Cloudflare uses Full (strict), and firewall rules are ready [y/N]').lower() != 'y':
+                raise ValueError('Manual DNS confirmation is required')
+            check_certificate(document)
+            if ask('Confirm certificate renewal is arranged before expiry [y/N]').lower() != 'y':
+                raise ValueError('Certificate renewal must be arranged before deployment')
+            return
+        except MenuBack:
+            continue
         except (OSError, ValueError) as error:
             print(error)
-
 
 def required_values(path):
     document = Environment(path)
@@ -362,15 +347,20 @@ def main(module=None):
     path = ROOT / module / '.env'
     while not path.is_file():
         ask(f'Create {path} with the module’s required settings, then press Enter to retry')
-    domain_menu(path)
     while True:
+        domain_menu(path)
+        while True:
+            try:
+                required_values(path)
+                break
+            except ValueError as error:
+                print(error)
+                ask('Edit .env in another terminal, then press Enter to recheck')
         try:
-            required_values(path)
+            tls_menu(path)
             break
-        except ValueError as error:
-            print(error)
-            ask('Edit .env in another terminal, then press Enter to recheck')
-    tls_menu(path)
+        except MenuBack:
+            continue
     while True:
         try:
             module_prerequisites(path)
@@ -395,7 +385,7 @@ def main(module=None):
 def cli(module=None):
     try:
         main(module)
-    except (EOFError, KeyboardInterrupt):
+    except (EOFError, KeyboardInterrupt, MenuBack):
         print('\nSetup cancelled; deployment blocked.', file=sys.stderr)
         sys.exit(1)
     except (OSError, ValueError) as error:

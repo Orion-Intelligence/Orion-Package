@@ -48,7 +48,7 @@ choose_repositories() {
         count=0
         for value in "${SELECTED[@]}"; do count=$((count + value)); done
         printf '\033[H\033[2JOrion Docker %s\n\n' "$ACTION"
-        printf 'Up/Down: move | Space: toggle | Enter: run | q/Esc: cancel\n\n'
+        printf 'Up/Down: move | Space: toggle | Enter: run | q/Esc: quit\n\n'
         for ((row = 0; row <= total; row++)); do
             checked=' '
             if ((row == 0)); then
@@ -102,7 +102,7 @@ main() {
 }
 
 run_selected() {
-    if [[ "$ACTION" == pull ]]; then python3 -B "$PACKAGE_DIR/pull/_shared/deployment.py" || return $?; fi
+    if [[ "$ACTION" == pull ]]; then python3 -B "$PACKAGE_DIR/pull/_shared/deployment.py" --modules "$@" || return $?; fi
     local repository logged_in=0 status
     for repository in "$@"; do
         printf '\n%s: %s\n' "$ACTION" "$repository"
