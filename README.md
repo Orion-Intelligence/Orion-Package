@@ -48,6 +48,8 @@ Certificates are reused when valid. Initial setup configures Certbot DNS challen
 
 **Rebuild and push Orion-mail once before using this flow:** its image now supports a separate SMTP hostname. Pull refuses older mail images before changing DNS. The current Postfix profile requires a public IPv4 address. Configure reverse DNS/PTR to the SMTP hostname through your VPS provider and confirm TCP 25 is allowed; Cloudflare cannot configure those provider settings. Tor2Web and the shared edge cannot both bind the same host port—keep their listeners on separate host IPs/ports or separate servers.
 
+Push automatically clones missing source repositories from `https://github.com/Orion-Intelligence/<repository>.git`, using `trusted-main`, into the directory beside Orion-Package (or `ORION_BASE_DIR`). Existing checkouts are updated safely; dirty/diverged checkouts and existing non-Git paths stop the build without overwriting them.
+
 For private GitHub source repositories, push asks for a separate **GitHub PAT** during the `trusted-main` fetch. Grant repository **Contents: Read** access and any required organization approval. Input is hidden, no username/password entry is needed, and the token is not saved. Each protected repository fetch may prompt again. SSH remotes retain their existing SSH authentication.
 
 ### Docker Hub login
