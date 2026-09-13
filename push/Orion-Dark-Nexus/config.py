@@ -5,8 +5,12 @@ PORT = 8030
 MODULE = 'api.server:app'
 PROJECT = 'orion-model-gateway'
 COMPOSE = 'docker-compose.prod.yml'
+BASE_IMAGE = 'python:3.13-slim'
 COMPILER_PACKAGES = 'gcc libc6-dev python3-dev'
 RELEASE = 'USER 65534:65534\n'
+INFERENCE_PACKAGES = {
+    'mpmath', 'networkx', 'sympy', 'torch', 'triton',
+}
 
 
 def ignore(directory, names, default):
@@ -63,3 +67,17 @@ def configure(config):
 
 def configure_pull(config):
     configure_runtime(config)
+
+
+def keep_dependency(line):
+    if not line or line.startswith('#'):
+        return True
+    name = line.split()[0].split('==')[0].lower()
+    return not name.startswith('nvidia-') and name not in INFERENCE_PACKAGES
+
+
+def prepare(context, _repo, _ignored, _run):
+    for filename in ('requirements.txt', 'requirements.lock'):
+        path = context / 'app' / filename
+        lines = path.read_text().splitlines()
+        path.write_text('\n'.join(line for line in lines if keep_dependency(line)) + '\n')

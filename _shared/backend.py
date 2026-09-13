@@ -137,6 +137,8 @@ def build(configure, repo, image):
     prefix = dockerfile.split(boundary)[0]
     lines = prefix.splitlines()
     first = next(index for index, line in enumerate(lines) if line.startswith('FROM '))
+    if hasattr(configure, 'BASE_IMAGE'):
+        lines[first] = 'FROM ' + configure.BASE_IMAGE
     lines[first] += ' AS runtime'
     prefix = '\n'.join(lines) + '\n'
     with tempfile.TemporaryDirectory(prefix=f'orion-{configure.SLUG}-build-') as directory:
