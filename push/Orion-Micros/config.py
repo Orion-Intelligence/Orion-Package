@@ -16,6 +16,7 @@ def configure_runtime(config):
         'retries': 10,
         'start_period': '5m',
     })
+    services.pop('juice-shop', None)
     clamav = services['clamav']
     clamav['image'] = 'clamav/clamav:1.5.4@sha256:0af8760cd96f9ab67d07977af36e155431581a9fe9f0ec8b256c9f855fda183e'
     clamav['deploy']['resources']['limits']['memory'] = '3221225472'

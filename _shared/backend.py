@@ -26,6 +26,7 @@ def run(*args, **kwargs):
 def service_diagnostics(config, names=None):
     selected = names or tuple(config['services'])
     found = False
+    failures = []
     for service in selected:
         container = config['services'][service].get('container_name')
         if not container:
@@ -39,11 +40,17 @@ def service_diagnostics(config, names=None):
         if names is None and state.get('Status') == 'running' and health in ('', 'healthy'):
             continue
         found = True
-        print(f'{service}: status={state.get("Status")} health={health or "none"} '
-              f'oom_killed={state.get("OOMKilled", False)} error={state.get("Error") or "none"}', file=sys.stderr)
+        summary = (f'{service}: status={state.get("Status")} health={health or "none"} '
+                   f'oom_killed={state.get("OOMKilled", False)} error={state.get("Error") or "none"}')
+        failures.append(summary)
+        print(summary, file=sys.stderr)
         subprocess.run(('docker', 'logs', '--tail', '150', container), check=False)
     if not found:
         print('No failed container was found; Docker daemon events may contain the failure.', file=sys.stderr)
+    else:
+        print('Failed service summary:', file=sys.stderr)
+        for failure in failures:
+            print(f'  {failure}', file=sys.stderr)
 
 
 def prepare_recoverable_services(configure, config, command, env):
@@ -220,7 +227,7 @@ def pull(configure, env_file, image):
                 service_diagnostics(config, recreate)
                 raise
         try:
-            run(*command, 'up', '--detach', '--no-build', '--wait', '--wait-timeout', '900', env=env)
+            run(*command, 'up', '--detach', '--no-build', '--remove-orphans', '--wait', '--wait-timeout', '900', env=env)
         except subprocess.CalledProcessError:
             service_diagnostics(config)
             raise
