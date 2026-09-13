@@ -10,6 +10,19 @@ SELECTED=(0 0 0 0 0 0 0 0)
 
 pending() { printf '%s: %s not implemented yet.\n' "$1" "$ACTION" >&2; return 1; }
 
+restore_handler() {
+    local repository="$1" path="push/$1/repo.sh"
+    [[ -f "$PACKAGE_DIR/$path" ]] && return 0
+    local -a missing=()
+    mapfile -t missing < <(git -C "$PACKAGE_DIR" ls-files --deleted -- "push/$repository" "pull/$repository")
+    if ((${#missing[@]})); then
+        git -C "$PACKAGE_DIR" restore --source=HEAD -- "${missing[@]}" || return $?
+    fi
+    [[ -f "$PACKAGE_DIR/$path" ]] && return 0
+    printf 'Missing package handler: %s. Run git pull origin trusted-main, then retry.\n' "$PACKAGE_DIR/$path" >&2
+    return 1
+}
+
 push_backend() {
     python3 -B "$PACKAGE_DIR/_shared/backend.py" build "$REPO_PACKAGE_DIR" "$REPO_SOURCE_DIR" "$IMAGE" || return $?
     python3 -B "$PACKAGE_DIR/_shared/audit_image.py" "$IMAGE" "$SLUG" || return $?
@@ -106,7 +119,7 @@ run_selected() {
     local repository logged_in=0 status
     for repository in "$@"; do
         printf '\n%s: %s\n' "$ACTION" "$repository"
-        if [[ ! -f "$PACKAGE_DIR/push/$repository/repo.sh" ]]; then
+        if ! restore_handler "$repository"; then
             pending "$repository"
             return 1
         fi

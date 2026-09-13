@@ -200,7 +200,10 @@ def check_existing(config):
             'mongo': ('MONGO_INITDB_ROOT_USERNAME', 'MONGO_INITDB_ROOT_PASSWORD'),
             'elasticsearch': ('ELASTIC_PASSWORD',), 'arangodb': ('ARANGO_ROOT_PASSWORD',)}
     for container in containers:
-        name = container['Config']['Labels'].get('com.docker.compose.service')
+        labels = container['Config']['Labels']
+        if labels.get('com.docker.compose.oneoff', '').lower() == 'true':
+            continue
+        name = labels.get('com.docker.compose.service')
         if name not in config['services']:
             continue
         desired = config['services'][name]
