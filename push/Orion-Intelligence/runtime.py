@@ -49,15 +49,6 @@ def check_certificate():
     ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER).load_cert_chain(certificate, key)
 
 
-async def bootstrap():
-
-    from orion.management.managers.service_manager import service_manager
-    manager = service_manager.get_instance()
-    assert manager is not None
-    await manager.build_assets(manager.default_build_dir())
-    await manager.init_services()
-
-
 def main():
     role = sys.argv[1] if len(sys.argv) > 1 else 'web'
     if role == 'prepare':
@@ -68,7 +59,6 @@ def main():
         check_storage()
     elif role == 'web':
         check_storage()
-        asyncio.run(bootstrap())
         os.execvp('gunicorn', ['gunicorn', '-w', os.environ.get('ORION_WEB_WORKERS', '4'), '--threads', '4',
                               '-k', 'uvicorn.workers.UvicornWorker', 'main:app', '--bind', '0.0.0.0:8070', '--timeout', '900',
                               '--control-socket', '/tmp/gunicorn.ctl'])

@@ -28,6 +28,12 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
 
+def failure(message, action):
+    color = '\033[31m' if sys.stderr.isatty() else ''
+    reset = '\033[0m' if color else ''
+    print(f'{color}Error: {message}{reset}\nAction: {action}', file=sys.stderr, flush=True)
+
+
 def bind(source, target, read_only=False):
     return {'type': 'bind', 'source': source, 'target': target, 'read_only': read_only,
             'bind': {'create_host_path': False}}
@@ -314,8 +320,16 @@ def pull(env_file, image):
         compose('run', '--rm', '--no-deps', '--user', '0:0', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE',
                 '--cap-add', 'FOWNER', 'web', 'prepare')
         compose('run', '--rm', '--no-deps', 'web', 'check-storage')
-        compose('up', '--detach', '--no-build', '--wait', '--wait-timeout', '900',
-                'web', 'cron', 'documentation', 'mongo', 'elasticsearch', 'arangodb', 'redis_server')
+        try:
+            compose('up', '--detach', '--no-build', '--wait', '--wait-timeout', '900',
+                    'web', 'cron', 'documentation', 'mongo', 'elasticsearch', 'arangodb', 'redis_server')
+        except subprocess.CalledProcessError:
+            failure('trusted-web-main did not become healthy; nginx was not started',
+                    'Read the health output and web logs below, correct the first application error, then rerun ./pull.sh.')
+            subprocess.run([*command, 'ps', '--all'], env=environment)
+            subprocess.run(['docker', 'inspect', '--format', '{{json .State.Health}}', 'trusted-web-main'], env=environment)
+            subprocess.run(['docker', 'logs', '--tail', '200', 'trusted-web-main'], env=environment)
+            raise
         compose('run', '--rm', '--no-deps', 'nginx', 'nginx', '-t')
         compose('up', '--detach', '--no-build', '--wait', '--wait-timeout', '300', 'nginx')
         runtime.mkdir(parents=True, exist_ok=True)
@@ -330,5 +344,5 @@ if __name__ == '__main__':
             raise ValueError('Use build or pull')
         (build if action == 'build' else pull)(Path(location).resolve(), image)
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
-        print(f'Intelligence packaging failed: {error}', file=sys.stderr)
+        failure(f'Intelligence packaging failed: {error}', 'Correct the reported failure and rerun ./pull.sh; existing data volumes are preserved.')
         sys.exit(1)
