@@ -77,6 +77,26 @@ def prepare_recoverable_services(configure, config, command, env):
         raise
 
 
+def check_existing_credentials(configure, config):
+    protected = getattr(configure, 'PRESERVE_ENV', {})
+    if not protected:
+        return
+    ids = run('docker', 'ps', '--all', '--filter', f'label=com.docker.compose.project={config["name"]}',
+              '--format', '{{.ID}}', capture_output=True, text=True).stdout.split()
+    if not ids:
+        return
+    for container in json.loads(run('docker', 'inspect', *ids, capture_output=True, text=True).stdout):
+        labels = container['Config'].get('Labels', {})
+        if labels.get('com.docker.compose.oneoff', '').lower() == 'true':
+            continue
+        service = labels.get('com.docker.compose.service', '')
+        desired = config.get('services', {}).get(service, {}).get('environment', {})
+        previous = dict(item.split('=', 1) for item in container['Config'].get('Env', []) if '=' in item)
+        for key in protected.get(service, ()):
+            if previous.get(key) and previous[key] != str(desired.get(key, '')):
+                raise RuntimeError(f'{service}: {key} differs from the existing deployment; preserve its credentials or explicitly reset its data volume')
+
+
 def deployment(configure, repo):
     result = run('docker', 'compose', '--env-file', '/dev/null', '--file', str(repo / configure.COMPOSE),
                  'config', '--no-interpolate', '--no-env-resolution', '--no-path-resolution',
@@ -221,6 +241,9 @@ def pull(configure, env_file, image):
         command = ['docker', 'compose', '--env-file', str(env_file), '--project-directory', str(env_file.parent),
                    '--file', str(compose)]
         run(*command, 'config', '--quiet', env=env)
+        resolved = json.loads(run(*command, 'config', '--format', 'json', env=env,
+                                  capture_output=True, text=True).stdout)
+        check_existing_credentials(configure, resolved)
         run(*command, 'pull', env=env)
         prepare_recoverable_services(configure, config, command, env)
         recreate = getattr(configure, 'RECREATE_SERVICES', ())

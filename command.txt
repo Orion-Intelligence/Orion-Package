@@ -1,0 +1,1 @@
+docker ps -aq --filter label=com.docker.compose.project=trusted-search | xargs -r docker rm -f -v; docker volume ls -q --filter label=com.docker.compose.project=trusted-search | xargs -r docker volume rm -f; docker network ls -q --filter label=com.docker.compose.project=trusted-search | xargs -r docker network rm

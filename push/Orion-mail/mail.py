@@ -239,10 +239,11 @@ def validate_running_intelligence(settings):
 
 def verify_sso_connection(compose):
     probe = (
-        "import json, os, urllib.error, urllib.request; "
+        "import json, os, urllib.error, urllib.parse, urllib.request; "
         "url=os.environ['ORION_INTELLIGENCE_INTERNAL_URL'].rstrip('/')+'/api/sso/mail/session'; "
         "request=urllib.request.Request(url, data=json.dumps({'session_token':'x'*32}).encode(), "
-        "headers={'Content-Type':'application/json','X-Orion-Mail-Client-Secret':os.environ['ORION_MAIL_SSO_CLIENT_SECRET']}); "
+        "headers={'Content-Type':'application/json','Host':urllib.parse.urlsplit(os.environ['ORION_INTELLIGENCE_PUBLIC_URL']).netloc,"
+        "'X-Orion-Mail-Client-Secret':os.environ['ORION_MAIL_SSO_CLIENT_SECRET']}); "
         "\ntry:\n urllib.request.urlopen(request, timeout=10)\n raise SystemExit('SSO probe unexpectedly accepted an invalid session')"
         "\nexcept urllib.error.HTTPError as error:\n body=error.read().decode(errors='replace'); "
         "assert error.code == 401 and 'Invalid or expired Orion Mail session' in body, "

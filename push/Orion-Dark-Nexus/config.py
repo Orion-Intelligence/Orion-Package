@@ -13,6 +13,10 @@ RELEASE = 'USER 65534:65534\n'
 INFERENCE_PACKAGES = {
     'mpmath', 'networkx', 'sympy', 'torch', 'triton',
 }
+PRESERVE_ENV = {
+    'api': ('ENCRYPTION_KEY', 'MONGO_ROOT_USERNAME', 'MONGO_ROOT_PASSWORD'),
+    'mongo': ('MONGO_INITDB_ROOT_USERNAME', 'MONGO_INITDB_ROOT_PASSWORD'),
+}
 
 
 def ignore(directory, names, default):
