@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -45,6 +46,8 @@ def deployment(repo):
     web['environment'].update(ORION_TESTING='false', ORION_COVERAGE='false', SMTP_START_TLS='false',
                               MAIL_DOMAIN='${MAIL_DOMAIN:-mail.orionintelligence.org}',
                               INCOMING_MAIL_TOKEN='${INCOMING_MAIL_TOKEN:?Set the incoming-mail token}',
+                              ORION_MAIL_SSO_CLIENT_SECRET='${ORION_MAIL_SSO_CLIENT_SECRET:?Set the shared Orion Mail SSO secret}',
+                              ORION_INTELLIGENCE_INTERNAL_URL='${ORION_INTELLIGENCE_INTERNAL_URL:?Set the internal Orion Intelligence URL}',
                               APP_UID='${APP_UID:-1000}', APP_GID='${APP_GID:-1000}')
     web['volumes'] = [{'type': 'bind', 'source': '${ORION_MAIL_ATTACHMENTS:-${ORION_SOURCE_DIR}/backend/static/resource/attachments}',
                        'target': '/app/static/resource/attachments'}]
@@ -154,6 +157,7 @@ def pull(env_file, image):
         services = resolved['services']
         settings = services['web']['environment']
         validate_settings(settings)
+        validate_running_intelligence(settings)
         check_smtp_port(services['postfix'])
         domain = services['postfix']['environment']['MAIL_DOMAIN']
         edge = environment.get('ORION_MAIL_EDGE_CONTAINER', 'trusted-web-nginx')
@@ -194,6 +198,7 @@ def pull(env_file, image):
             print(f'DKIM public DNS record: {runtime / "dkim-record.txt"} (publish it in DNS if not already present)')
         run(sys.executable, '-B', str(PACKAGE_ROOT / 'pull/_shared/environment.py'), '--mail-dns', str(env_file))
         compose('up', '--detach', '--no-build', '--wait', '--wait-timeout', '900')
+        verify_sso_connection(compose)
         compose('exec', '-T', 'rspamd', 'rspamadm', 'control', 'reload')
         run('docker', 'exec', edge, 'nginx', '-t')
         run('docker', 'exec', edge, 'nginx', '-s', 'reload')
@@ -217,6 +222,33 @@ def validate_settings(settings):
     for key in ('APP_UID', 'APP_GID'):
         if not settings.get(key, '').isdigit() or int(settings[key]) == 0:
             raise ValueError(f'{key} must be a non-root numeric ID')
+
+
+def validate_running_intelligence(settings):
+    result = subprocess.run(['docker', 'inspect', '--format', '{{json .Config.Env}}', 'trusted-web-main'],
+                            capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError('Start or deploy Orion-Intelligence before Orion-mail')
+    environment = dict(item.split('=', 1) for item in json.loads(result.stdout) if '=' in item)
+    intelligence_secret = environment.get('ORION_MAIL_SSO_CLIENT_SECRET', '')
+    if len(intelligence_secret) < 32:
+        raise RuntimeError('The running Orion-Intelligence container has no Orion Mail SSO secret; redeploy Intelligence')
+    if not secrets.compare_digest(intelligence_secret, settings['ORION_MAIL_SSO_CLIENT_SECRET']):
+        raise RuntimeError('ORION_MAIL_SSO_CLIENT_SECRET differs from the running Orion-Intelligence container; deploy Intelligence and Mail together')
+
+
+def verify_sso_connection(compose):
+    probe = (
+        "import json, os, urllib.error, urllib.request; "
+        "url=os.environ['ORION_INTELLIGENCE_INTERNAL_URL'].rstrip('/')+'/api/sso/mail/session'; "
+        "request=urllib.request.Request(url, data=json.dumps({'session_token':'x'*32}).encode(), "
+        "headers={'Content-Type':'application/json','X-Orion-Mail-Client-Secret':os.environ['ORION_MAIL_SSO_CLIENT_SECRET']}); "
+        "\ntry:\n urllib.request.urlopen(request, timeout=10)\n raise SystemExit('SSO probe unexpectedly accepted an invalid session')"
+        "\nexcept urllib.error.HTTPError as error:\n body=error.read().decode(errors='replace'); "
+        "assert error.code == 401 and 'Invalid or expired Orion Mail session' in body, "
+        "f'Orion Intelligence SSO probe failed: HTTP {error.code}: {body}'"
+    )
+    compose('exec', '-T', 'web', 'python3', '-c', probe)
 
 
 def check_smtp_port(service):

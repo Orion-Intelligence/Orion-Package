@@ -23,8 +23,7 @@ function protect(root, target = 'browser-no-eval') {
     const original = fs.readFileSync(file, 'utf8');
     let output;
     if (browser) {
-      const marker = '/*! orion-protected:' + crypto.createHash('sha256').update(original).digest('hex') + ' */';
-      output = marker + '\n' + original;
+      output = original;
     } else {
       const obfuscator = require('javascript-obfuscator');
       const result = obfuscator.obfuscate(original, {

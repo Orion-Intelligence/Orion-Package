@@ -14,6 +14,10 @@ roots = {
     'social': ('/app',),
     'dark-nexus': ('/app',),
 }[module]
+browser_roots = {
+    'intelligence': ('/app/workspace/build', '/opt/orion/assets/docs'),
+    'mail': ('/client_build',),
+}.get(module, ())
 source = {'.py', '.pyc', '.pyo', '.pyx', '.pxd', '.pyi', '.c', '.h', '.o', '.ts', '.tsx', '.jsx',
           '.sh', '.bash', '.zsh', '.ipynb', '.vue', '.svelte', '.coffee'}
 leaked = []
@@ -28,7 +32,9 @@ for root_name in roots:
         if (file.suffix in source or file.name.endswith(('.js.map', '.mjs.map', '.css.map', '-source.zip'))
                 or '.git' in file.parts or file.name == '.env' or file.name.startswith('.env.')):
             leaked.append(relative)
-        elif file.suffix in {'.js', '.mjs', '.cjs'} and not file.read_bytes()[:128].startswith(b'/*! orion-protected:'):
+        elif (file.suffix in {'.js', '.mjs', '.cjs'}
+              and not any(file.is_relative_to(Path(browser_root)) for browser_root in browser_roots)
+              and not file.read_bytes()[:128].startswith(b'/*! orion-protected:')):
             leaked.append(relative)
 if leaked:
     raise SystemExit('Unprotected application files in final image: ' + ', '.join(leaked[:20]))

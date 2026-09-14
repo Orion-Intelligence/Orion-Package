@@ -66,7 +66,9 @@ def deployment(repo):
     web.update(image=IMAGE, command=['web'], user='${APP_UID:-1000}:${APP_GID:-1000}')
     web['env_file'] = ['${ORION_ENV_FILE:?Set the Intelligence env file}']
     web['environment'].update(PRODUCTION='1', TESTING_ENABLED='0', PYTHONPATH='/app',
-                              APP_UID='${APP_UID:-1000}', APP_GID='${APP_GID:-1000}')
+                              APP_UID='${APP_UID:-1000}', APP_GID='${APP_GID:-1000}',
+                              ORION_MAIL_SSO_CLIENT_SECRET='${ORION_MAIL_SSO_CLIENT_SECRET:?Set the shared Orion Mail SSO secret}',
+                              ORION_MAIL_REDIRECT_URIS='${ORION_MAIL_REDIRECT_URIS:?Set the Orion Mail callback URL}')
     web['healthcheck']['test'] = ['CMD-SHELL', 'host="$${APP_URL#https://}"; host="$${host%%/*}"; '
                                   'curl --fail --silent --header "Host: $$host" http://127.0.0.1:8070/api/public > /dev/null']
     web['volumes'] = [bind(SOURCE + suffix, target) for target, suffix in STORAGE.items()]
