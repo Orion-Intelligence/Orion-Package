@@ -1,7 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const obfuscator = require('javascript-obfuscator');
 
 function files(root) {
   return fs.readdirSync(root, {withFileTypes: true}).flatMap(entry => {
@@ -22,18 +21,25 @@ function protect(root, target = 'browser-no-eval') {
   for (const file of entries) {
     if (!/\.(?:m?js|cjs)$/.test(file)) continue;
     const original = fs.readFileSync(file, 'utf8');
-    const result = obfuscator.obfuscate(original, {
-      target, compact: true, sourceMap: false, seed: 73129,
-      identifierNamesGenerator: 'hexadecimal', identifiersPrefix: 'o' + crypto.createHash('sha256').update(path.relative(root, file)).digest('hex').slice(0, 8),
-      renameGlobals: false, renameProperties: false, transformObjectKeys: false,
-      controlFlowFlattening: false, deadCodeInjection: false,
-      debugProtection: false, selfDefending: false, disableConsoleOutput: false,
-      stringArray: !browser, stringArrayEncoding: browser ? [] : ['base64'], stringArrayThreshold: browser ? 0 : 1,
-      stringArrayCallsTransform: false, splitStrings: false,
-    }).getObfuscatedCode();
-    const licenses = original.match(/\/\*[!*][\s\S]*?\*\//g) || [];
-    const marker = '/*! orion-protected:' + crypto.createHash('sha256').update(result).digest('hex') + ' */';
-    const output = [marker, ...licenses, result].join('\n');
+    let output;
+    if (browser) {
+      const marker = '/*! orion-protected:' + crypto.createHash('sha256').update(original).digest('hex') + ' */';
+      output = marker + '\n' + original;
+    } else {
+      const obfuscator = require('javascript-obfuscator');
+      const result = obfuscator.obfuscate(original, {
+        target, compact: true, sourceMap: false, seed: 73129,
+        identifierNamesGenerator: 'hexadecimal', identifiersPrefix: 'o' + crypto.createHash('sha256').update(path.relative(root, file)).digest('hex').slice(0, 8),
+        renameGlobals: false, renameProperties: false, transformObjectKeys: false,
+        controlFlowFlattening: false, deadCodeInjection: false,
+        debugProtection: false, selfDefending: false, disableConsoleOutput: false,
+        stringArray: true, stringArrayEncoding: ['base64'], stringArrayThreshold: 1,
+        stringArrayCallsTransform: false, splitStrings: false,
+      }).getObfuscatedCode();
+      const licenses = original.match(/\/\*[!*][\s\S]*?\*\//g) || [];
+      const marker = '/*! orion-protected:' + crypto.createHash('sha256').update(result).digest('hex') + ' */';
+      output = [marker, ...licenses, result].join('\n');
+    }
     for (const algorithm of ['sha256', 'sha384', 'sha512']) {
       integrity.set(algorithm + '-' + crypto.createHash(algorithm).update(original).digest('base64'),
         algorithm + '-' + crypto.createHash(algorithm).update(output).digest('base64'));
@@ -63,7 +69,7 @@ function protect(root, target = 'browser-no-eval') {
     }
     fs.writeFileSync(worker, JSON.stringify(manifest));
   }
-  console.log(`Obfuscated ${count} JavaScript assets (${target}); source maps excluded.`);
+  console.log(`${browser ? 'Validated' : 'Obfuscated'} ${count} JavaScript assets (${target}); source maps excluded.`);
 }
 
 if (require.main === module) protect(process.argv[2], process.argv[3]);

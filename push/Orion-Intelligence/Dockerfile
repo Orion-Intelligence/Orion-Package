@@ -5,7 +5,6 @@ COPY client/package.json client/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY client/ ./
 COPY obfuscation/ /obfuscation/
-RUN npm ci --prefix /obfuscation --ignore-scripts --no-audit --no-fund
 RUN npx ng build --configuration production --source-map=false \
  && test -f build/index.html && test -f build/assets/data/map/world.json
 
