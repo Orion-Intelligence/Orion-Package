@@ -23,6 +23,32 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
 
+def patch_identity_client(identity_client):
+    identity_source = identity_client.read_text()
+    if '"Host": public_host,' in identity_source:
+        return
+    import_anchor = 'from typing import Any\n'
+    header_anchor = '    def _headers() -> dict[str, str]:\n        return {\n'
+    if identity_source.count(import_anchor) != 1 or identity_source.count(header_anchor) != 1:
+        raise RuntimeError('Review Orion Mail identity client: internal SSO Host-header patch no longer applies')
+    identity_source = identity_source.replace(import_anchor, import_anchor + 'from urllib.parse import urlsplit\n')
+    identity_source = identity_source.replace(
+        header_anchor,
+        '    def _headers() -> dict[str, str]:\n'
+        '        public_host = urlsplit(CONSTANTS.S_ORION_INTELLIGENCE_PUBLIC_URL).netloc\n'
+        '        if not public_host:\n'
+        '            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, '
+        'detail="Orion Intelligence authentication is unavailable")\n'
+        '        return {\n'
+    )
+    identity_source = identity_source.replace(
+        '            "Content-Type": "application/json",\n',
+        '            "Content-Type": "application/json",\n            "Host": public_host,\n',
+        1,
+    )
+    identity_client.write_text(identity_source)
+
+
 def deployment(repo):
     result = run('docker', 'compose', '--env-file', '/dev/null', '--file', str(repo / 'docker-compose-production.yml'),
                  'config', '--no-interpolate', '--no-env-resolution', '--no-path-resolution',
@@ -94,6 +120,7 @@ def build(repo, image):
         ignored = shutil.ignore_patterns('__pycache__', '*.pyc', '*.log', '.env*', 'tests')
         for name in ('configs', 'routes', 'orion'):
             shutil.copytree(repo / 'backend' / name, app / name, ignore=ignored)
+        patch_identity_client(app / 'orion/services/orion_identity_manager/orion_identity_client.py')
         shutil.copy2(repo / 'dockerFiles/postfix-entrypoint.sh', app / 'postfix-entrypoint.sh')
         client = context / 'client'
         client.mkdir()
