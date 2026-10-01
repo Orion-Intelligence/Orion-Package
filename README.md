@@ -115,6 +115,100 @@ For additional build modes, testing workflows, production deployment, and config
 
 </details>
 
+## Kubernetes Deployment
+
+Everything Orion runs in production can be brought up on a server with one command:
+
+```bash
+cd /root/Orion-Package
+./run.sh build kubernetics -p
+```
+
+On a bare machine this installs Kubernetes (k3s), pulls every image, and starts the full stack: the Tor pool, the
+crawler instances, Micros, Dark Nexus, Redis, the swarm feeder, the dispatcher and the Kubernetes Dashboard. On a
+machine that is already running it brings it up to date. It is the same command either way, and it is safe to run
+again.
+
+`-p` means production and is required. There is no other mode; making it explicit means the command cannot be run by
+half-typing something else. It does not change the application's own `PRODUCTION` flag, which lives in the
+per-instance configuration and is edited in Rancher.
+
+<details>
+<summary><strong>What it needs</strong> · credentials and access</summary>
+
+<br>
+
+Four files in `/root/orion-config`:
+
+| File | Becomes |
+| --- | --- |
+| `crawler.env` | Secret `orion-secrets` |
+| `micros.env` | Secret `micros-secrets` |
+| `nexus.env` | Secret `nexus-secrets` |
+| `dockerhub.env` | `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` for the private images |
+
+`micros.env` and `nexus.env` are taken from this package's own generated `.env` files when they exist, so `./setup.sh`
+already covers two of the four. Anything missing is reported with the exact command to create it, and nothing is
+installed or written to the machine until all four are present.
+
+A GitHub personal access token is needed once, to clone the private Orion-Crawler repository. The package's existing
+token handling is reused, so a token already entered for `./pull.sh` is not asked for again.
+
+</details>
+
+<details>
+<summary><strong>Where the manifests live</strong> · and why they are not in this repository</summary>
+
+<br>
+
+The Kubernetes manifests are in **Orion-Crawler** under `k8s/`, alongside the code they describe, and
+`k8s/bootstrap.sh` is what applies them. `run.sh` is the front door: it makes sure that repository is present and
+current, checks the credentials, and hands over.
+
+Keeping the manifests with the crawler is deliberate. Each time they have drifted away from the code something has
+been quietly left behind, and the result is a cluster that looks healthy while collecting nothing.
+
+The checkout is force-reset to the branch on every run rather than merged, so a stray local commit or a half-finished
+edit cannot be deployed by accident.
+
+</details>
+
+<details>
+<summary><strong>Options</strong></summary>
+
+<br>
+
+```
+--crawler-memory SIZE   memory limit per crawler instance
+--config-dir DIR        credentials directory (default: /root/orion-config)
+--branch NAME           Orion-Crawler branch to deploy
+```
+
+The crawler memory limit is left alone when the cluster already has one — somebody chose that number, and a re-deploy
+is not the moment to overrule it. Only a fresh machine gets a default, sized from its RAM.
+
+</details>
+
+### Day-to-day operation
+
+Once a server is deployed, the rest is done through Rancher rather than over SSH. Two buttons live under
+**Workloads → CronJobs**, each run with **⋮ → Run Now**:
+
+| Button | Use it when |
+| --- | --- |
+| `orion-redeploy` | configuration changed, or a new image was pushed |
+| `orion-git-deploy` | the manifests changed in Git |
+
+Both stream their progress live in the job's log, with every step timestamped and a summary at the end: how long it
+took, how many pods came back, and which categories the dispatcher is queueing.
+
+To change what a crawler instance collects, edit its ConfigMap — **Storage → ConfigMaps →
+`orion-crawler-instance-<n>`** — and then delete that one pod. Each instance has its own box holding its complete
+configuration, and `orion-git-deploy` deliberately leaves those boxes alone so edits made in the UI are not reverted.
+
+Scaling is a single click: raising the replica count on the crawler creates the new instance's configuration
+automatically, with every category switched off until you decide what it should do.
+
 ## Platform Preview
 
 The Orion homepage provides a search-first investigation workspace with summary panels, recent findings, and
